@@ -17,6 +17,10 @@ body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,sa
 body.light #media-dim{background:rgba(248,250,252,var(--dim,.25))}
 /* Vignette: single full-viewport farthest-corner gradient, no boxes */
 #vignette{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse farthest-corner at center,transparent 40%,rgba(0,0,0,var(--vig,.5)) 100%)}
+/* Text-side shadow: gradient rising from the edge the text sits against,
+   fading to transparent just past the far side of the text block. */
+#textshadow{position:absolute;inset:0;pointer-events:none;z-index:4;display:none;background:linear-gradient(var(--ts-dir,to top),rgba(0,0,0,var(--vig,.5)) 0%,rgba(0,0,0,0) var(--ts-extent,55%))}
+#textshadow.on{display:block}
 /* Layout modes */
 #stage[data-layout="full"] #media{position:absolute;inset:0}
 #stage[data-layout="top"] #media{position:absolute;inset:0 0 50% 0}
@@ -52,7 +56,13 @@ body[data-titlefont="serif"] #banner{font-family:Georgia,serif}
 body[data-titlefont="mono"] #banner{font-family:ui-monospace,Menlo,monospace}
 #progress{position:absolute;left:0;bottom:0;height:4px;background:var(--progress-color,var(--accent));width:0;z-index:7}
 #progress.on{animation:grow linear}
+body.paused #progress.on{animation-play-state:paused}
 @keyframes grow{from{width:0}to{width:100%}}
+/* Paused indicator: small badge in the corner, visible only while paused. */
+#pausebadge{position:absolute;top:2vh;right:2vw;z-index:8;display:none;align-items:center;gap:1vw;background:rgba(0,0,0,.55);color:#f8fafc;padding:1vh 1.6vw;border-radius:999px;font-size:2vh;letter-spacing:.08em;text-transform:uppercase}
+body.light #pausebadge{background:rgba(248,250,252,.75);color:#0f172a}
+body.paused #pausebadge{display:flex}
+#pausebadge svg{width:2.4vh;height:2.4vh;fill:currentColor}
 /* Errors */
 #errors{position:absolute;top:2vh;right:2vw;z-index:8;color:#fca5a5;font-size:1.8vh;max-width:40vw;text-align:right;text-shadow:0 1px 6px rgba(0,0,0,.6)}
 body[data-compact="true"] #headline{font-size:4vh}
@@ -63,6 +73,7 @@ body[data-compact="true"] #brief{font-size:2.4vh;max-height:22vh}
 <div id="stage">
   <div id="media" class="hidden"><div id="media-dim"></div></div>
   <div id="vignette"></div>
+  <div id="textshadow"></div>
   <div id="banner"></div>
   <div id="text">
     <div id="meta"><span id="meta-source"></span><span class="dot"></span><span id="meta-date"></span></div>
@@ -70,6 +81,7 @@ body[data-compact="true"] #brief{font-size:2.4vh;max-height:22vh}
     <div id="brief"></div>
   </div>
   <div id="progress"></div>
+  <div id="pausebadge"><svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>Paused</div>
   <div id="errors"></div>
 </div>
 <script>
@@ -103,6 +115,67 @@ document.body.dataset.titlefont = cfg.titleFont || 'system';
 document.body.dataset.compact = String(COMPACT);
 if ((cfg.background || 'dark') === 'light') document.body.classList.add('light');
 document.documentElement.style.setProperty('--vig', String((parseInt(cfg.vignetteOpacity || '5', 10) || 5) / 10));
+// Text-side shadow: on = gradual shadow only on the edge(s) the title/text sit against.
+const TEXT_SHADOW = String(cfg.textEdgeShadow) === 'on';
+const textShadowEl = document.querySelector('#textshadow');
+const stageEl = stage;
+function contentRect(el) {
+  // The flex containers stretch to their half of the stage; measure the
+  // actual rendered children so the shadow follows the text, not the box.
+  const kids = [...el.children].filter(k => k.offsetHeight > 0);
+  if (!kids.length) return null;
+  const r = kids[0].getBoundingClientRect();
+  const rect = { top: r.top, bottom: r.bottom, left: r.left, right: r.right };
+  for (const k of kids.slice(1)) {
+    const kr = k.getBoundingClientRect();
+    rect.top = Math.min(rect.top, kr.top); rect.bottom = Math.max(rect.bottom, kr.bottom);
+    rect.left = Math.min(rect.left, kr.left); rect.right = Math.max(rect.right, kr.right);
+  }
+  return rect;
+}
+function edgeFor(rect) {
+  // Which stage edge is this element anchored to, and how deep does it reach?
+  const s = stageEl.getBoundingClientRect();
+  const w = rect.right - rect.left, h = rect.bottom - rect.top;
+  // A block spanning most of the stage's width is anchored top/bottom, not
+  // left/right (its side gaps are just margin) — and vice versa.
+  const cands = [];
+  if (w <= s.width * 0.6) cands.push(
+    { edge: 'left', d: rect.left - s.left, axis: s.width },
+    { edge: 'right', d: s.right - rect.right, axis: s.width });
+  if (h <= s.height * 0.6) cands.push(
+    { edge: 'top', d: rect.top - s.top, axis: s.height },
+    { edge: 'bottom', d: s.bottom - rect.bottom, axis: s.height });
+  if (!cands.length) return null;
+  cands.sort((a, b) => a.d - b.d);
+  const near = cands[0];
+  const dirMap = { top: 'to bottom', bottom: 'to top', left: 'to right', right: 'to left' };
+  // Gradient runs from the anchored edge to just past the element's far side.
+  const depth = (near.edge === 'top' || near.edge === 'bottom')
+    ? (near.edge === 'top' ? rect.bottom - s.top : s.bottom - rect.top)
+    : (near.edge === 'left' ? rect.right - s.left : s.right - rect.left);
+  return { dir: dirMap[near.edge], extent: Math.min(100, (depth / near.axis) * 100 + 6) };
+}
+function updateTextShadow() {
+  if (!TEXT_SHADOW) { textShadowEl.classList.remove('on'); return; }
+  const layers = [];
+  if (banner.textContent.trim()) { const l = edgeFor(banner.getBoundingClientRect()); if (l) layers.push(l); }
+  const textRect = contentRect(document.querySelector('#text'));
+  if (textRect && textRect.bottom > textRect.top) { const l = edgeFor(textRect); if (l) layers.push(l); }
+  if (!layers.length) { textShadowEl.classList.remove('on'); return; }
+  // If title and text sit on the same edge, one deeper gradient covers both —
+  // never stack two gradients on the same edge (that doubles the darkness).
+  const byEdge = new Map();
+  for (const l of layers) {
+    const key = l.dir;
+    if (!byEdge.has(key) || byEdge.get(key).extent < l.extent) byEdge.set(key, l);
+  }
+  const vig = String((parseInt(cfg.vignetteOpacity || '5', 10) || 5) / 10);
+  textShadowEl.style.background = [...byEdge.values()].map(l =>
+    `linear-gradient(${l.dir},rgba(0,0,0,${vig}) 0%,rgba(0,0,0,0) ${l.extent.toFixed(1)}%)`).join(',');
+  textShadowEl.classList.add('on');
+}
+window.addEventListener('resize', () => setTimeout(updateTextShadow, 50));
 if (cfg.progressColor) document.documentElement.style.setProperty('--progress-color', cfg.progressColor);
 banner.textContent = cfg.title || '';
 
@@ -136,6 +209,21 @@ function preload(url) {
   });
 }
 
+// Cache in-flight/completed preloads so each image is fetched once; the
+// pre-warm below means the await in show() resolves instantly by the time
+// a story is displayed, so text and image swap in the same frame.
+const imageCache = new Map();
+function preloadCached(url) {
+  if (!imageCache.has(url)) imageCache.set(url, preload(url));
+  return imageCache.get(url);
+}
+// Pre-warm the next story's image while the current one is on screen.
+function prewarmNext() {
+  if (stories.length < 2) return;
+  const next = stories[(index + 1) % stories.length];
+  if (next && next.image) preloadCached(next.image);
+}
+
 function formatDate(value) {
   const d = new Date(value);
   if (isNaN(d)) return '';
@@ -146,6 +234,31 @@ let index = -1;
 const seconds = Math.max(3, parseInt(cfg.storySeconds || '15', 10) || 15);
 
 let showTimer = null;
+let timerDue = 0;  // absolute due time of the pending showTimer
+
+// Tap-to-pause: freeze story advance and the progress bar mid-fill; a second
+// tap resumes with the remaining time. Swipe navigation stays active.
+let paused = false;
+let remainingMs = 0;
+
+function pauseStory() {
+  if (paused || !showTimer) return;
+  remainingMs = Math.max(0, timerDue - Date.now());
+  clearTimeout(showTimer); showTimer = null;
+  paused = true;
+  document.body.classList.add('paused');
+}
+
+function resumeStory() {
+  if (!paused) return;
+  paused = false;
+  document.body.classList.remove('paused');
+  // The CSS progress animation was frozen mid-fill by animation-play-state,
+  // so it simply continues; only the story timer needs restarting.
+  const left = remainingMs > 0 ? remainingMs : seconds * 1000;
+  showTimer = setTimeout(() => show(), left);
+  timerDue = Date.now() + left;
+}
 
 async function show(next) {
   if (showTimer) { clearTimeout(showTimer); showTimer = null; }
@@ -153,13 +266,16 @@ async function show(next) {
   if (index < 0) index = stories.length - 1;
   const story = stories[index];
   if (!story) return;
+  // Wait for the image first (usually instant thanks to prewarmNext), then
+  // swap text and image in the same synchronous block so they always change
+  // together instead of text leading a slow image fetch.
+  let ok = false;
+  if (story.image) ok = await preloadCached(story.image);
   headline.textContent = story.title || '';
   brief.textContent = TEXT_MODE === 'brief' ? (story.summary || '') : '';
   metaSource.textContent = showSource ? (story.source || '') : '';
   metaDate.textContent = showDate ? formatDate(story.date) : '';
   // Show image only when one loads; otherwise fall back to flat background.
-  let ok = false;
-  if (story.image) ok = await preload(story.image);
   if (ok) {
     media.style.backgroundImage = `url("${story.image.replace(/"/g, '%22')}")`;
     media.classList.remove('hidden');
@@ -167,6 +283,9 @@ async function show(next) {
     media.style.backgroundImage = '';
     media.classList.add('hidden');
   }
+  // Text-side shadow: re-measure after this story's text is in place. Small
+  // delay so layout/fonts settle; rAF alone doesn't fire in background tabs.
+  setTimeout(updateTextShadow, 50);
   // Progress bar: restart the CSS animation for this story's duration.
   if (cfg.showProgress !== 'false') {
     progress.classList.remove('on');
@@ -174,10 +293,18 @@ async function show(next) {
     progress.style.animationDuration = seconds + 's';
     progress.classList.add('on');
   }
+  // Pre-warm the next story's image while this one is on screen.
+  prewarmNext();
+  // Advancing to a new story always un-pauses.
+  paused = false;
+  document.body.classList.remove('paused');
+  remainingMs = 0;
   showTimer = setTimeout(() => show(), seconds * 1000);
+  timerDue = Date.now() + seconds * 1000;
 }
 
 // Swipe navigation: swipe left = next story, swipe right = previous.
+// A tap (no horizontal movement) toggles pause.
 // Pointer events cover touchscreens and mice alike.
 if (SWIPE_ENABLED) {
   let startX = null, startY = null, startT = 0;
@@ -187,12 +314,27 @@ if (SWIPE_ENABLED) {
     const dx = e.clientX - startX, dy = e.clientY - startY;
     startX = startY = null;
     if (Date.now() - startT > 1200) return;          // slow press ≠ swipe
-    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;  // too small or too vertical
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) {
+      if (Math.abs(dx) < 20 && Date.now() - startT < 500) {  // a clean tap
+        paused ? resumeStory() : pauseStory();
+      }
+      return;                                        // too small or too vertical
+    }
+    paused = false;                                  // swiping away clears pause
+    document.body.classList.remove('paused');
+    remainingMs = 0;
     show(index + (dx < 0 ? 1 : -1));
   });
   stage.addEventListener('pointercancel', () => { startX = startY = null; });
   // Block scroll interference without disabling taps entirely.
   stage.style.touchAction = 'pan-y';
+} else {
+  // Swipe disabled: taps still toggle pause.
+  let downT = 0;
+  stage.addEventListener('pointerdown', e => { downT = Date.now(); });
+  stage.addEventListener('pointerup', () => {
+    if (Date.now() - downT < 500) paused ? resumeStory() : pauseStory();
+  });
 }
 
 // Page refresh: re-fetch the display page (fresh stories) every refreshInterval.
