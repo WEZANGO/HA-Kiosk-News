@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kiosk News</title>
+<style>
+:root{--bg:#0b1222;--fg:#f8fafc;--muted:#94a3b8;--accent:#38bdf8}
+body.light{--bg:#f8fafc;--fg:#0f172a;--muted:#64748b;--accent:#0284c7}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,sans-serif;overflow:hidden}
+#stage{position:relative;width:100vw;height:100vh;overflow:hidden}
+#media{position:absolute;inset:0;background-size:cover;background-position:center;transition:opacity .6s ease}
+#media.hidden{opacity:0}
+#media-dim{position:absolute;inset:0;background:rgba(3,7,18,var(--dim,.35))}
+body.light #media-dim{background:rgba(248,250,252,var(--dim,.25))}
+/* Vignette: single full-viewport farthest-corner gradient, no boxes */
+#vignette{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse farthest-corner at center,transparent 40%,rgba(0,0,0,var(--vig,.5)) 100%)}
+/* Layout modes */
+#stage[data-layout="full"] #media{position:absolute;inset:0}
+#stage[data-layout="top"] #media{position:absolute;inset:0 0 50% 0}
+#stage[data-layout="bottom"] #media{position:absolute;inset:50% 0 0 0}
+#stage[data-layout="left"] #media{position:absolute;inset:0 50% 0 0}
+#stage[data-layout="right"] #media{position:absolute;inset:0 0 0 50%}
+#text{position:absolute;z-index:5}
+#stage[data-layout="full"] #text{inset:auto 6vw 8vh 6vw}
+#stage[data-layout="top"] #text{inset:50% 5vw 0 5vw;display:flex;flex-direction:column;justify-content:center}
+#stage[data-layout="bottom"] #text{inset:0 5vw 50% 5vw;display:flex;flex-direction:column;justify-content:center}
+#stage[data-layout="left"] #text{inset:0 5vw 0 50%;display:flex;flex-direction:column;justify-content:center}
+#stage[data-layout="right"] #text{inset:0 50% 0 5vw;display:flex;flex-direction:column;justify-content:center}
+#headline{font-weight:700;line-height:1.15;letter-spacing:-.01em}
+body[data-textsize="small"] #headline{font-size:3.2vh}
+body[data-textsize="medium"] #headline{font-size:4.6vh}
+body[data-textsize="large"] #headline{font-size:6.2vh}
+body[data-textsize="xlarge"] #headline{font-size:8vh}
+#brief{margin-top:2vh;color:var(--muted);line-height:1.4;max-height:38vh;overflow:hidden}
+body[data-textsize="small"] #brief{font-size:2.2vh}
+body[data-textsize="medium"] #brief{font-size:2.8vh}
+body[data-textsize="large"] #brief{font-size:3.4vh}
+body[data-textsize="xlarge"] #brief{font-size:4.2vh}
+#meta{margin-top:2.5vh;display:flex;gap:1.5vw;align-items:center;color:var(--muted);font-size:2.2vh;text-transform:uppercase;letter-spacing:.06em}
+#meta .dot{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+/* Title banner: floating text, no box */
+#banner{position:absolute;left:0;right:0;z-index:6;text-align:center;font-weight:700;color:var(--fg);text-shadow:0 2px 12px rgba(0,0,0,.6)}
+body[data-titlepos="top"] #banner{top:4vh}
+body[data-titlepos="bottom"] #banner{bottom:4vh}
+body[data-titlesize="small"] #banner{font-size:3vh}
+body[data-titlesize="medium"] #banner{font-size:4.2vh}
+body[data-titlesize="large"] #banner{font-size:5.6vh}
+body[data-titlefont="serif"] #banner{font-family:Georgia,serif}
+body[data-titlefont="mono"] #banner{font-family:ui-monospace,Menlo,monospace}
+#progress{position:absolute;left:0;bottom:0;height:4px;background:var(--accent);width:0;z-index:7}
+#progress.on{animation:grow linear}
+@keyframes grow{from{width:0}to{width:100%}}
+/* Errors */
+#errors{position:absolute;top:2vh;right:2vw;z-index:8;color:#fca5a5;font-size:1.8vh;max-width:40vw;text-align:right;text-shadow:0 1px 6px rgba(0,0,0,.6)}
+body[data-compact="true"] #headline{font-size:4vh}
+body[data-compact="true"] #brief{font-size:2.4vh;max-height:22vh}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="media" class="hidden"><div id="media-dim"></div></div>
+  <div id="vignette"></div>
+  <div id="banner"></div>
+  <div id="text">
+    <div id="meta"><span id="meta-source"></span><span class="dot"></span><span id="meta-date"></span></div>
+    <div id="headline"></div>
+    <div id="brief"></div>
+  </div>
+  <div id="progress"></div>
+  <div id="errors"></div>
+</div>
+<script>
+const cfg = window.KIOSK_NEWS_CONFIG || {};
+const COMPACT = window.KIOSK_NEWS_COMPACT || false;
+const stories = Array.isArray(cfg.stories) ? cfg.stories : [];
+const errors = Array.isArray(cfg.errors) ? cfg.errors : [];
+
+const stage = document.querySelector('#stage');
+const media = document.querySelector('#media');
+const headline = document.querySelector('#headline');
+const brief = document.querySelector('#brief');
+const metaSource = document.querySelector('#meta-source');
+const metaDate = document.querySelector('#meta-date');
+const banner = document.querySelector('#banner');
+const progress = document.querySelector('#progress');
+const errorsEl = document.querySelector('#errors');
+
+document.body.dataset.textsize = cfg.textSize || 'large';
+document.body.dataset.titlepos = cfg.titlePosition || 'top';
+document.body.dataset.titlesize = cfg.titleSize || 'medium';
+document.body.dataset.titlefont = cfg.titleFont || 'system';
+document.body.dataset.compact = String(COMPACT);
+if ((cfg.background || 'dark') === 'light') document.body.classList.add('light');
+document.documentElement.style.setProperty('--vig', String((parseInt(cfg.vignetteOpacity || '5', 10) || 5) / 10));
+banner.textContent = cfg.title || '';
+
+if (errors.length) {
+  errorsEl.textContent = errors.join(' · ');
+}
+
+// Text mode: 'title' shows only the headline; 'brief' shows headline + summary.
+const TEXT_MODE = cfg.textContent === 'brief' ? 'brief' : 'title';
+brief.style.display = TEXT_MODE === 'brief' ? '' : 'none';
+
+// imagePosition: 'full' = image behind text; others = image half, text other half.
+const LAYOUT = ['top', 'bottom', 'left', 'right'].includes(cfg.imagePosition) ? cfg.imagePosition : 'full';
+stage.dataset.layout = COMPACT && LAYOUT === 'full' ? 'full' : LAYOUT;
+stage.dataset.compact = String(COMPACT);
+// Dim media slightly so text stays readable in 'full' mode.
+document.documentElement.style.setProperty('--dim', LAYOUT === 'full' ? '0.35' : '0');
+
+const showSource = cfg.showSource !== 'false';
+const showDate = cfg.showDate !== 'false';
+metaSource.style.display = showSource ? '' : 'none';
+metaDate.style.display = showDate ? '' : 'none';
+
+function preload(url) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => resolve(true);
+    img.onerror = () => resolve(false);
+    img.src = url;
+    setTimeout(() => resolve(false), 8000);
+  });
+}
+
+function formatDate(value) {
+  const d = new Date(value);
+  if (isNaN(d)) return '';
+  return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+let index = -1;
+const seconds = Math.max(3, parseInt(cfg.storySeconds || '15', 10) || 15);
+
+async function show(next) {
+  index = (next !== undefined) ? next : (index + 1) % Math.max(stories.length, 1);
+  const story = stories[index];
+  if (!story) return;
+  headline.textContent = story.title || '';
+  brief.textContent = TEXT_MODE === 'brief' ? (story.summary || '') : '';
+  metaSource.textContent = showSource ? (story.source || '') : '';
+  metaDate.textContent = showDate ? formatDate(story.date) : '';
+  // Show image only when one loads; otherwise fall back to flat background.
+  let ok = false;
+  if (story.image) ok = await preload(story.image);
+  if (ok) {
+    media.style.backgroundImage = `url("${story.image.replace(/"/g, '%22')}")`;
+    media.classList.remove('hidden');
+  } else {
+    media.style.backgroundImage = '';
+    media.classList.add('hidden');
+  }
+  // Progress bar: restart the CSS animation for this story's duration.
+  if (cfg.showProgress !== 'false') {
+    progress.classList.remove('on');
+    void progress.offsetWidth;
+    progress.style.animationDuration = seconds + 's';
+    progress.classList.add('on');
+  }
+  setTimeout(() => show(), seconds * 1000);
+}
+
+// Page refresh: re-fetch the display page (fresh stories) every refreshInterval.
+const refreshMinutes = Math.max(1, parseInt(cfg.refreshInterval || '60', 10) || 60);
+setTimeout(() => location.reload(), refreshMinutes * 60 * 1000);
+
+show(0);
+</script>
+</body>
+</html>
