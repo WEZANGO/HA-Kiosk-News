@@ -7,6 +7,7 @@ connections, and a display page with the per-dashboard config injected into it.
 from __future__ import annotations
 
 import json
+import os
 import re
 import secrets
 import xml.etree.ElementTree as ET
@@ -17,7 +18,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 from urllib.request import Request, urlopen
 
-DATA_FILE = Path("/data/dashboards.json")
+DATA_FILE = Path(os.environ.get("KIOSK_NEWS_DATA", "/data/dashboards.json"))
 OPTIONS_FILE = Path("/data/options.json")
 DISPLAY_FILE = Path("/app/web/display.html")
 PORT = 8098
@@ -267,13 +268,28 @@ function showToast(message){const toast=document.createElement('div');toast.clas
 function render(){list.innerHTML=items.length?'':'<p>No displays yet.</p>';for(const d of items){const full=displayLink(`/display/${d.id}`),compact=displayLink(`/card/${d.id}`);const row=document.createElement('div');row.className='row';row.innerHTML=`<div class="dash-top"><strong>${d.name}</strong><small>${d.kind==='compact'?'Card':'Full screen'} · ${(d.sources||[]).length} feed(s)</small></div>${d.kind==='compact'
 ?`<div class="link-line"><span class="link-label">Card</span><a class="link-url" href="${compact}" target="_blank" rel="noopener">${compact}</a><button class="copy" type="button" data-copy="${compact}">⧉</button></div>${directLink(`/card/${d.id}`)?`<div class="link-line"><span class="link-label">Direct</span><a class="link-url" href="${directLink(`/card/${d.id}`)}" target="_blank" rel="noopener">${directLink(`/card/${d.id}`)}</a><button class="copy" type="button" data-copy="${directLink(`/card/${d.id}`)}" title="Copy direct link (token-authenticated, for kiosks)">⧉</button></div>`:''}`
 :`<div class="link-line"><span class="link-label">Full screen</span><a class="link-url" href="${full}" target="_blank" rel="noopener">${full}</a><button class="copy" type="button" data-copy="${full}">⧉</button></div>${directLink(`/display/${d.id}`)?`<div class="link-line"><span class="link-label">Direct</span><a class="link-url" href="${directLink(`/display/${d.id}`)}" target="_blank" rel="noopener">${directLink(`/display/${d.id}`)}</a><button class="copy" type="button" data-copy="${directLink(`/display/${d.id}`)}" title="Copy direct link (token-authenticated, for kiosks)">⧉</button></div>`:''}`}
-<div class="dash-actions"><button class="secondary">Edit</button><button class="secondary" data-preview="1">Preview</button><button class="danger">Delete</button></div>`;
+<div class="dash-actions"><button class="secondary">Edit</button><button class="secondary" data-preview="1">Preview</button><button class="secondary" data-duplicate="1">Duplicate</button><button class="danger">Delete</button></div>`;
  row.querySelector('.secondary[data-preview="1"]').onclick=()=>openPreview(d);
+ row.querySelector('.secondary[data-duplicate="1"]').onclick=()=>duplicateRow(d,row);
  row.querySelector('.danger').onclick=rowEditDelete(d,row);
  const edit=row.querySelector('.secondary:not([data-preview])');edit.onclick=()=>openModal(d);
  for(const btn of row.querySelectorAll('.copy'))btn.onclick=async()=>{const url=btn.dataset.copy;try{await navigator.clipboard.writeText(url)}catch(e){const ta=document.createElement('textarea');ta.value=url;document.body.append(ta);ta.select();document.execCommand('copy');ta.remove()}btn.textContent='✓';setTimeout(()=>btn.textContent='⧉',1200)};
  list.append(row)}}
 // Two-tap delete (native confirm() is blocked inside HA's sandboxed iframe).
+// Duplicate: prefill "<Name> (copy)", let the user rename in the edit modal flow —
+// reuse the editor modal so renaming feels natural, then save as a NEW display.
+function duplicateRow(d){
+ (async()=>{
+  // Ask the server to copy with the default name, then open it for renaming.
+  let created;
+  try{created=await request(`/api/dashboards/${d.id}/duplicate`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})}
+  catch(e){showToast(e.message);return}
+  showToast('Duplicated');await load();
+  // Open the copy for renaming; the modal's Save (PUT) keeps its id.
+  const fresh=items.find(x=>x.id===created.id);
+  if(fresh)openModal(fresh);
+ })()
+}
 function rowEditDelete(d,row){const btn=()=>{};return async function handler(){const del=row.querySelector('.danger');if(del.dataset.armed){del.disabled=true;try{await request(`/api/dashboards/${d.id}`,{method:'DELETE'});showToast('Deleted')}catch(e){showToast(e.message);del.disabled=false;del.dataset.armed='';del.textContent='Delete';return}load()}else{del.dataset.armed='1';del.textContent='Really delete?';setTimeout(()=>{if(del.isConnected&&del.dataset.armed){del.dataset.armed='';del.textContent='Delete'}},3000)}}}
 async function load(){items=await request('/api/dashboards');render()}
 const previewOverlay=document.querySelector('#preview-overlay');
@@ -382,12 +398,48 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path.rstrip("/")
         match = re.fullmatch(r"/api/preview/([a-z0-9-]+)", path)
         if match: return self.preview(match.group(1))
+        match = re.fullmatch(r"/api/dashboards/([a-z0-9-]+)/duplicate", path)
+        if match: return self.duplicate(match.group(1))
         if path != "/api/dashboards": return self.send_json({"error": "Not found"}, 404)
         try:
             dashboards = load_dashboards(); item = clean_dashboard(self.payload())
             if any(d["id"] == item["id"] for d in dashboards): raise ValueError("A display with this name already exists.")
             dashboards.append(item); save_dashboards(dashboards); self.send_json(item, HTTPStatus.CREATED)
         except (ValueError, json.JSONDecodeError) as error: self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+
+    def duplicate(self, identifier: str) -> None:
+        """Copy a dashboard under a fresh name/ID supplied in the payload."""
+        try:
+            dashboards, index = self.find(identifier)
+            payload = dict(dashboards[index])
+            payload.pop("id", None)
+            # Flatten sources into the sourceName/sourceUrl/sourceImage keys
+            # clean_dashboard expects; a copy carries every setting over.
+            for i, source in enumerate(payload.pop("sources", []) or []):
+                payload[f"sourceName{i if i else ''}"] = source.get("name", "")
+                payload[f"sourceUrl{i if i else ''}"] = source.get("url", "")
+                payload[f"sourceImage{i if i else ''}"] = source.get("fallbackImage", "")
+            body = self.payload() or {}
+            if body.get("name"): payload["name"] = str(body["name"]).strip()
+            # Default name: "<Name> (copy)" / "<Name> (copy 2)" …
+            if "name" not in body or not str(body.get("name", "")).strip():
+                base = dashboards[index]["name"]
+                names = {d["name"] for d in dashboards}
+                candidate = f"{base} (copy)"
+                n = 2
+                while candidate in names:
+                    candidate = f"{base} (copy {n})"; n += 1
+                payload["name"] = candidate
+            item = clean_dashboard(payload)
+            if any(d["id"] == item["id"] for d in dashboards):
+                # Explicit name chosen but its ID collides — ask for another.
+                return self.send_json({"error": "A display with this name already exists."}, HTTPStatus.BAD_REQUEST)
+            dashboards.insert(index + 1, item); save_dashboards(dashboards)
+            self.send_json(item, HTTPStatus.CREATED)
+        except KeyError as error:
+            self.send_json({"error": str(error)}, HTTPStatus.NOT_FOUND)
+        except (ValueError, json.JSONDecodeError) as error:
+            self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
 
     def do_PUT(self) -> None:
         if not self.authorized(): return self.send_json({"error": "Unauthorized."}, 401)
