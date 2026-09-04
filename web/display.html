@@ -114,9 +114,11 @@ document.body.dataset.titlesize = cfg.titleSize || 'medium';
 document.body.dataset.titlefont = cfg.titleFont || 'system';
 document.body.dataset.compact = String(COMPACT);
 if ((cfg.background || 'dark') === 'light') document.body.classList.add('light');
-document.documentElement.style.setProperty('--vig', String((parseInt(cfg.vignetteOpacity || '5', 10) || 5) / 10));
-// Text-side shadow: on = gradual shadow only on the edge(s) the title/text sit against.
-const TEXT_SHADOW = String(cfg.textEdgeShadow) === 'on';
+// Shadow: 'vignette' (whole-screen edges) or 'edge' (behind title/text only) —
+// never both. shadowOpacity (1-10) drives whichever is active.
+const SHADOW_STYLE = ['vignette', 'edge'].includes(cfg.shadowStyle) ? cfg.shadowStyle : (cfg.shadowStyle === 'off' ? 'off' : 'vignette');
+const SHADOW_VIG = String((parseInt(cfg.shadowOpacity ?? cfg.vignetteOpacity ?? '5', 10) || 5) / 10);
+document.documentElement.style.setProperty('--vig', SHADOW_STYLE === 'vignette' ? SHADOW_VIG : '0');
 const textShadowEl = document.querySelector('#textshadow');
 const stageEl = stage;
 function contentRect(el) {
@@ -157,7 +159,7 @@ function edgeFor(rect) {
   return { dir: dirMap[near.edge], extent: Math.min(100, (depth / near.axis) * 100 + 6) };
 }
 function updateTextShadow() {
-  if (!TEXT_SHADOW) { textShadowEl.classList.remove('on'); return; }
+  if (SHADOW_STYLE !== 'edge') { textShadowEl.classList.remove('on'); return; }
   const layers = [];
   if (banner.textContent.trim()) { const l = edgeFor(banner.getBoundingClientRect()); if (l) layers.push(l); }
   const textRect = contentRect(document.querySelector('#text'));
@@ -170,7 +172,7 @@ function updateTextShadow() {
     const key = l.dir;
     if (!byEdge.has(key) || byEdge.get(key).extent < l.extent) byEdge.set(key, l);
   }
-  const vig = String((parseInt(cfg.vignetteOpacity || '5', 10) || 5) / 10);
+  const vig = SHADOW_VIG;
   textShadowEl.style.background = [...byEdge.values()].map(l =>
     `linear-gradient(${l.dir},rgba(0,0,0,${vig}) 0%,rgba(0,0,0,0) ${l.extent.toFixed(1)}%)`).join(',');
   textShadowEl.classList.add('on');
