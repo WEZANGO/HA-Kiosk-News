@@ -76,6 +76,14 @@ body[data-compact="true"] #brief{font-size:2.4vh;max-height:22vh}
 const cfg = window.KIOSK_NEWS_CONFIG || {};
 const COMPACT = window.KIOSK_NEWS_COMPACT || false;
 const stories = Array.isArray(cfg.stories) ? cfg.stories : [];
+if (String(cfg.shuffle) === 'true' && stories.length > 1) {
+  // Fisher–Yates on a copy; server order is untouched.
+  for (let i = stories.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [stories[i], stories[j]] = [stories[j], stories[i]];
+  }
+}
+const SWIPE_ENABLED = String(cfg.swipeNavigation) !== 'false';
 const errors = Array.isArray(cfg.errors) ? cfg.errors : [];
 
 const stage = document.querySelector('#stage');
@@ -137,8 +145,12 @@ function formatDate(value) {
 let index = -1;
 const seconds = Math.max(3, parseInt(cfg.storySeconds || '15', 10) || 15);
 
+let showTimer = null;
+
 async function show(next) {
+  if (showTimer) { clearTimeout(showTimer); showTimer = null; }
   index = (next !== undefined) ? next : (index + 1) % Math.max(stories.length, 1);
+  if (index < 0) index = stories.length - 1;
   const story = stories[index];
   if (!story) return;
   headline.textContent = story.title || '';
@@ -162,7 +174,25 @@ async function show(next) {
     progress.style.animationDuration = seconds + 's';
     progress.classList.add('on');
   }
-  setTimeout(() => show(), seconds * 1000);
+  showTimer = setTimeout(() => show(), seconds * 1000);
+}
+
+// Swipe navigation: swipe left = next story, swipe right = previous.
+// Pointer events cover touchscreens and mice alike.
+if (SWIPE_ENABLED) {
+  let startX = null, startY = null, startT = 0;
+  stage.addEventListener('pointerdown', e => { startX = e.clientX; startY = e.clientY; startT = Date.now(); });
+  stage.addEventListener('pointerup', e => {
+    if (startX === null) return;
+    const dx = e.clientX - startX, dy = e.clientY - startY;
+    startX = startY = null;
+    if (Date.now() - startT > 1200) return;          // slow press ≠ swipe
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;  // too small or too vertical
+    show(index + (dx < 0 ? 1 : -1));
+  });
+  stage.addEventListener('pointercancel', () => { startX = startY = null; });
+  // Block scroll interference without disabling taps entirely.
+  stage.style.touchAction = 'pan-y';
 }
 
 // Page refresh: re-fetch the display page (fresh stories) every refreshInterval.
