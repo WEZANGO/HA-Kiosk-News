@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kiosk News — Settings Playground</title>
+<style>
+:root{--bg:#0f172a;--panel:#1e293b;--fg:#f8fafc;--muted:#94a3b8;--border:#334155;--accent:#38bdf8}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,sans-serif;height:100vh;display:flex;overflow:hidden}
+#controls{width:320px;min-width:280px;overflow-y:auto;padding:16px;border-right:1px solid var(--border);background:var(--panel)}
+#controls h1{font-size:16px;margin-bottom:4px}
+#controls p{font-size:11px;color:var(--muted);margin-bottom:12px}
+#controls h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:14px 0 6px}
+#controls label{display:block;font-size:12px;margin:6px 0;color:var(--fg)}
+#controls select,#controls input[type=text],#controls input[type=number],#controls input[type=url]{width:100%;margin-top:2px;padding:5px 7px;background:#0f172a;color:var(--fg);border:1px solid var(--border);border-radius:5px;font-size:12px}
+#controls input[type=color]{width:100%;height:28px;border:1px solid var(--border);border-radius:5px;background:#0f172a;margin-top:2px}
+#controls input[type=range]{width:100%}
+#controls .row{display:flex;gap:8px}
+#controls .row label{flex:1}
+#stagewrap{flex:1;display:flex;flex-direction:column}
+#viewport{flex:1;margin:14px;border:1px solid var(--border);border-radius:8px;overflow:hidden;position:relative}
+#frame{width:100%;height:100%;border:0;background:#000}
+#bar{display:flex;gap:8px;align-items:center;padding:0 14px 10px}
+#bar button{padding:6px 12px;background:var(--accent);color:#0b1222;border:0;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer}
+#bar button.secondary{background:var(--panel);color:var(--fg);border:1px solid var(--border)}
+#bar .res{font-size:11px;color:var(--muted);margin-left:auto}
+.story{border:1px solid var(--border);border-radius:6px;padding:8px;margin-top:8px;background:#0f172a}
+.story input{margin-top:4px}
+.story .rm{float:right;background:none;border:0;color:#f87171;cursor:pointer;font-size:14px}
+#add-story{width:100%;margin-top:8px;padding:6px;background:var(--panel);color:var(--accent);border:1px dashed var(--border);border-radius:6px;cursor:pointer;font-size:12px}
+</style>
+</head>
+<body>
+<div id="controls">
+  <h1>Settings playground</h1>
+  <p>Live-test display.html with any settings. Runs from a static file — no add-on needed. Serve the repo root (e.g. <code>python3 -m http.server</code>) so it can fetch <code>web/display.html</code>.</p>
+
+  <h2>Shadow</h2>
+  <label>Style<select id="shadowStyle">
+    <option value="vignette">Vignette (screen edges)</option>
+    <option value="edge">Text-side (behind text)</option>
+    <option value="off">Off</option>
+  </select></label>
+  <label>Shadow opacity: <span id="opVal">5</span>
+    <input type="range" id="shadowOpacity" min="1" max="10" value="5">
+  </label>
+
+  <h2>Layout</h2>
+  <label>Image position<select id="imagePosition">
+    <option value="full">Full screen image, text over it</option>
+    <option value="top">Image top, text below</option>
+    <option value="bottom">Image bottom, text above</option>
+    <option value="left">Image left, text right</option>
+    <option value="right">Image right, text left</option>
+  </select></label>
+  <label>Text shown<select id="textContent">
+    <option value="title">Headline only</option>
+    <option value="brief">Brief / summary</option>
+  </select></label>
+  <label>Text size<select id="textSize">
+    <option value="small">Small</option><option value="medium">Medium</option>
+    <option value="large" selected>Large</option><option value="xlarge">Extra large</option>
+  </select></label>
+  <label>Compact card<input type="checkbox" id="compact" style="vertical-align:middle"></label>
+
+  <h2>Text</h2>
+  <label>Title<input type="text" id="title" placeholder="e.g. Headlines"></label>
+  <label>Title position<select id="titlePosition">
+    <option value="top">Top</option><option value="bottom">Bottom</option>
+  </select></label>
+  <div class="row">
+    <label>Title size<select id="titleSize">
+      <option value="small">Small</option><option value="medium" selected>Medium</option><option value="large">Large</option>
+    </select></label>
+    <label>Title font<select id="titleFont">
+      <option value="system">Sans</option><option value="serif">Serif</option><option value="mono">Mono</option>
+    </select></label>
+  </div>
+  <div class="row">
+    <label>Show source<select id="showSource"><option value="true">Yes</option><option value="false">No</option></select></label>
+    <label>Show date<select id="showDate"><option value="true">Yes</option><option value="false">No</option></select></label>
+  </div>
+
+  <h2>Theme & progress</h2>
+  <label>Theme<select id="background">
+    <option value="dark">Dark</option><option value="light">Light</option>
+  </select></label>
+  <label>Progress bar<select id="showProgress"><option value="true">On</option><option value="false">Off</option></select></label>
+  <label>Progress color<input type="color" id="progressColor" value="#38bdf8"></label>
+
+  <h2>Timing</h2>
+  <div class="row">
+    <label>Sec/story<input type="number" id="storySeconds" min="3" max="120" value="15"></label>
+    <label>Shuffle<select id="shuffle"><option value="false">No</option><option value="true">Yes</option></select></label>
+  </div>
+  <label>Swipe nav<select id="swipeNavigation"><option value="true">On</option><option value="false">Off</option></select></label>
+
+  <h2>Stories</h2>
+  <div id="stories"></div>
+  <button id="add-story">＋ Add story</button>
+
+  <h2>Preview size</h2>
+  <label>Viewport
+    <select id="viewportSize">
+      <option value="">Fill available space</option>
+      <option value="1920x1080">1920×1080 (TV)</option>
+      <option value="1280x800">1280×800 (tablet)</option>
+      <option value="800x600">800×600 (card, scaled)</option>
+    </select>
+  </label>
+
+  <div id="bar" style="padding:10px 0 0">
+    <button id="reload">Apply</button>
+    <button id="auto" class="secondary">Auto-apply: on</button>
+  </div>
+</div>
+
+<div id="stagewrap">
+  <div id="viewport"><iframe id="frame"></iframe></div>
+</div>
+
+<script>
+const FIELDS = ['shadowStyle','shadowOpacity','imagePosition','textContent','textSize','compact','title','titlePosition','titleSize','titleFont','showSource','showDate','background','showProgress','progressColor','storySeconds','shuffle','swipeNavigation'];
+const $ = id => document.getElementById(id);
+let auto = true, rebuildTimer = null;
+
+function storyBlock(data = {}) {
+  const div = document.createElement('div');
+  div.className = 'story';
+  div.innerHTML = `<button class="rm" title="Remove">✕</button>
+    <input type="text" class="s-title" placeholder="Headline" value="${(data.title||'').replace(/"/g,'&quot;')}">
+    <input type="text" class="s-summary" placeholder="Summary (shown in brief mode)" value="${(data.summary||'').replace(/"/g,'&quot;')}">
+    <input type="url" class="s-image" placeholder="Image URL" value="${data.image||''}">
+    <input type="text" class="s-source" placeholder="Source name" value="${data.source||''}" style="width:45%;display:inline"> <input type="text" class="s-date" placeholder="2026-09-04" value="${data.date||''}" style="width:50%;display:inline">`;
+  div.querySelector('.rm').onclick = () => { div.remove(); schedule(); };
+  div.querySelectorAll('input').forEach(i => i.addEventListener('input', schedule));
+  return div;
+}
+function sampleStory() {
+  return storyBlock({
+    title: 'Rivers burst their banks as record rainfall batters the coast for a third consecutive day',
+    summary: 'Emergency services evacuated hundreds of residents overnight as forecasters warned of further downpours through the weekend.',
+    image: 'https://picsum.photos/seed/' + Math.floor(Math.random()*999) + '/1600/900',
+    source: 'BBC News', date: '2026-09-04'
+  });
+}
+$('add-story').onclick = () => { $('stories').append(sampleStory()); schedule(); };
+$('stories').append(storyBlock({
+  title: 'Rivers burst their banks as record rainfall batters the coast for a third consecutive day',
+  summary: 'Emergency services evacuated hundreds of residents overnight as forecasters warned of further downpours through the weekend.',
+  image: 'https://picsum.photos/seed/kiosknews/1600/900', source: 'BBC News', date: '2026-09-04'
+}));
+
+function collect() {
+  const cfg = {};
+  for (const f of FIELDS) {
+    const el = $(f);
+    cfg[f] = el.type === 'checkbox' ? String(el.checked) : el.value;
+  }
+  cfg.errors = [];
+  cfg.stories = [...$('stories').children].map(div => ({
+    title: div.querySelector('.s-title').value,
+    summary: div.querySelector('.s-summary').value,
+    image: div.querySelector('.s-image').value,
+    source: div.querySelector('.s-source').value,
+    date: div.querySelector('.s-date').value,
+  })).filter(s => s.title || s.image);
+  return cfg;
+}
+
+async function render() {
+  let tpl;
+  try { tpl = await (await fetch('../web/display.html')).text(); }
+  catch (e) {
+    $('frame').srcdoc = `<p style="font:14px system-ui;color:#f87171;padding:20px">Could not load ../web/display.html (${e.message}). Serve the repo root over http, e.g. <code>python3 -m http.server</code>, and open /tools/playground.html — or use the standalone build: tools/playground-standalone.html</p>`;
+    return;
+  }
+  const cfg = collect();
+  const compact = cfg.compact === 'true'; delete cfg.compact;
+  const injected = JSON.stringify(cfg).replace(/</g, '\\u003c');
+  $('frame').srcdoc = tpl.replace('</head>',
+    `<script>window.KIOSK_NEWS_CONFIG=${injected};window.KIOSK_NEWS_COMPACT=${compact};<\/script></head>`, 1);
+}
+
+function applyViewport() {
+  const v = $('viewportSize').value;
+  const vp = $('viewport');
+  if (!v) { vp.style.width = ''; vp.style.height = ''; vp.style.margin = '14px'; return; }
+  const [w, h] = v.split('x').map(Number);
+  const avail = vp.parentElement.getBoundingClientRect();
+  const scale = Math.min((avail.width - 28) / w, (avail.height - 28) / h, 1);
+  vp.style.width = (w * scale) + 'px'; vp.style.height = (h * scale) + 'px'; vp.style.margin = '14px auto';
+}
+
+function schedule() {
+  if (!auto) return;
+  clearTimeout(rebuildTimer);
+  rebuildTimer = setTimeout(render, 400);
+}
+for (const f of FIELDS) $(f).addEventListener('input', e => {
+  if (f === 'shadowOpacity') $('opVal').textContent = e.target.value;
+  schedule();
+});
+$('viewportSize').addEventListener('change', applyViewport);
+$('reload').onclick = render;
+$('auto').onclick = () => { auto = !auto; $('auto').textContent = 'Auto-apply: ' + (auto ? 'on' : 'off'); if (auto) render(); };
+window.addEventListener('resize', applyViewport);
+applyViewport();
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kiosk News — Settings Playground</title>
+<style>
+:root{--bg:#0f172a;--panel:#1e293b;--fg:#f8fafc;--muted:#94a3b8;--border:#334155;--accent:#38bdf8}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,sans-serif;height:100vh;display:flex;overflow:hidden}
+#controls{width:320px;min-width:280px;overflow-y:auto;padding:16px;border-right:1px solid var(--border);background:var(--panel)}
+#controls h1{font-size:16px;margin-bottom:4px}
+#controls p{font-size:11px;color:var(--muted);margin-bottom:12px}
+#controls h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:14px 0 6px}
+#controls label{display:block;font-size:12px;margin:6px 0;color:var(--fg)}
+#controls select,#controls input[type=text],#controls input[type=number],#controls input[type=url]{width:100%;margin-top:2px;padding:5px 7px;background:#0f172a;color:var(--fg);border:1px solid var(--border);border-radius:5px;font-size:12px}
+#controls input[type=color]{width:100%;height:28px;border:1px solid var(--border);border-radius:5px;background:#0f172a;margin-top:2px}
+#controls input[type=range]{width:100%}
+#controls .row{display:flex;gap:8px}
+#controls .row label{flex:1}
+#stagewrap{flex:1;display:flex;flex-direction:column}
+#viewport{flex:1;margin:14px;border:1px solid var(--border);border-radius:8px;overflow:hidden;position:relative}
+#frame{width:100%;height:100%;border:0;background:#000}
+#bar{display:flex;gap:8px;align-items:center;padding:0 14px 10px}
+#bar button{padding:6px 12px;background:var(--accent);color:#0b1222;border:0;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer}
+#bar button.secondary{background:var(--panel);color:var(--fg);border:1px solid var(--border)}
+#bar .res{font-size:11px;color:var(--muted);margin-left:auto}
+.story{border:1px solid var(--border);border-radius:6px;padding:8px;margin-top:8px;background:#0f172a}
+.story input{margin-top:4px}
+.story .rm{float:right;background:none;border:0;color:#f87171;cursor:pointer;font-size:14px}
+#add-story{width:100%;margin-top:8px;padding:6px;background:var(--panel);color:var(--accent);border:1px dashed var(--border);border-radius:6px;cursor:pointer;font-size:12px}
+</style>
+<script>window.EMBEDDED_DISPLAY = "\u003c!doctype html>\n\u003chtml lang=\"en\">\n\u003chead>\n\u003cmeta charset=\"utf-8\">\n\u003cmeta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n\u003ctitle>Kiosk News\u003c/title>\n\u003cstyle>\n:root{--bg:#0b1222;--fg:#f8fafc;--muted:#94a3b8;--accent:#38bdf8}\nbody.light{--bg:#f8fafc;--fg:#0f172a;--muted:#64748b;--accent:#0284c7}\n*{margin:0;padding:0;box-sizing:border-box}\nhtml,body{height:100%}\nbody{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,sans-serif;overflow:hidden}\n#stage{position:relative;width:100vw;height:100vh;overflow:hidden}\n#media{position:absolute;inset:0;background-size:cover;background-position:center;transition:opacity .6s ease}\n#media.hidden{opacity:0}\n#media-dim{position:absolute;inset:0;background:rgba(3,7,18,var(--dim,.35))}\nbody.light #media-dim{background:rgba(248,250,252,var(--dim,.25))}\n/* Vignette: single full-viewport farthest-corner gradient, no boxes.\n   Light mode fades to white instead of black (matches text-side shadow). */\n#vignette{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse farthest-corner at center,transparent 40%,rgba(0,0,0,var(--vig,.5)) 100%)}\nbody.light #vignette{background:radial-gradient(ellipse farthest-corner at center,transparent 40%,rgba(248,250,252,var(--vig,.5)) 100%)}\n/* Text-side shadow: gradient rising from the edge the text sits against,\n   fading to transparent just past the far side of the text block. */\n#textshadow{position:absolute;inset:0;pointer-events:none;z-index:4;display:none;background:linear-gradient(var(--ts-dir,to top),rgba(0,0,0,var(--vig,.5)) 0%,rgba(0,0,0,0) var(--ts-extent,55%))}\n#textshadow.on{display:block}\n/* Layout modes */\n#stage[data-layout=\"full\"] #media{position:absolute;inset:0}\n#stage[data-layout=\"top\"] #media{position:absolute;inset:0 0 50% 0}\n#stage[data-layout=\"bottom\"] #media{position:absolute;inset:50% 0 0 0}\n#stage[data-layout=\"left\"] #media{position:absolute;inset:0 50% 0 0}\n#stage[data-layout=\"right\"] #media{position:absolute;inset:0 0 0 50%}\n#text{position:absolute;z-index:5}\n#stage[data-layout=\"full\"] #text{inset:auto 6vw 8vh 6vw}\n#stage[data-layout=\"top\"] #text{inset:50% 5vw 0 5vw;display:flex;flex-direction:column;justify-content:center}\n#stage[data-layout=\"bottom\"] #text{inset:0 5vw 50% 5vw;display:flex;flex-direction:column;justify-content:center}\n#stage[data-layout=\"left\"] #text{inset:0 5vw 0 calc(50% + 4vw);display:flex;flex-direction:column;justify-content:center}\n#stage[data-layout=\"right\"] #text{inset:0 calc(50% + 4vw) 0 5vw;display:flex;flex-direction:column;justify-content:center}\n#headline{font-weight:700;line-height:1.15;letter-spacing:-.01em}\nbody[data-textsize=\"small\"] #headline{font-size:3.2vh}\nbody[data-textsize=\"medium\"] #headline{font-size:4.6vh}\nbody[data-textsize=\"large\"] #headline{font-size:6.2vh}\nbody[data-textsize=\"xlarge\"] #headline{font-size:8vh}\n#brief{margin-top:2vh;color:var(--muted);line-height:1.4;max-height:38vh;overflow:hidden}\nbody[data-textsize=\"small\"] #brief{font-size:2.2vh}\nbody[data-textsize=\"medium\"] #brief{font-size:2.8vh}\nbody[data-textsize=\"large\"] #brief{font-size:3.4vh}\nbody[data-textsize=\"xlarge\"] #brief{font-size:4.2vh}\n#meta{margin-top:2.5vh;display:flex;gap:1.5vw;align-items:center;color:var(--muted);font-size:2.2vh;text-transform:uppercase;letter-spacing:.06em}\n#meta .dot{width:6px;height:6px;border-radius:50%;background:var(--accent)}\n/* Title banner: floating text, no box */\n#banner{position:absolute;left:0;right:0;z-index:6;text-align:center;font-weight:700;color:var(--fg);text-shadow:0 2px 12px rgba(0,0,0,.6)}\nbody[data-titlepos=\"top\"] #banner{top:4vh}\nbody[data-titlepos=\"bottom\"] #banner{bottom:4vh}\nbody[data-titlesize=\"small\"] #banner{font-size:3vh}\nbody[data-titlesize=\"medium\"] #banner{font-size:4.2vh}\nbody[data-titlesize=\"large\"] #banner{font-size:5.6vh}\nbody[data-titlefont=\"serif\"] #banner{font-family:Georgia,serif}\nbody[data-titlefont=\"mono\"] #banner{font-family:ui-monospace,Menlo,monospace}\n#progress{position:absolute;left:0;bottom:0;height:4px;background:var(--progress-color,var(--accent));width:0;z-index:7}\n#progress.on{animation:grow linear}\nbody.paused #progress.on{animation-play-state:paused}\n@keyframes grow{from{width:0}to{width:100%}}\n/* Paused indicator: small badge in the corner, visible only while paused. */\n#pausebadge{position:absolute;top:2vh;right:2vw;z-index:8;display:none;align-items:center;gap:1vw;background:rgba(0,0,0,.55);color:#f8fafc;padding:1vh 1.6vw;border-radius:999px;font-size:2vh;letter-spacing:.08em;text-transform:uppercase}\nbody.light #pausebadge{background:rgba(248,250,252,.75);color:#0f172a}\nbody.paused #pausebadge{display:flex}\n#pausebadge svg{width:2.4vh;height:2.4vh;fill:currentColor}\n/* Errors */\n#errors{position:absolute;top:2vh;right:2vw;z-index:8;color:#fca5a5;font-size:1.8vh;max-width:40vw;text-align:right;text-shadow:0 1px 6px rgba(0,0,0,.6)}\nbody[data-compact=\"true\"] #headline{font-size:4vh}\nbody[data-compact=\"true\"] #brief{font-size:2.4vh;max-height:22vh}\n\u003c/style>\n\u003c/head>\n\u003cbody>\n\u003cdiv id=\"stage\">\n  \u003cdiv id=\"media\" class=\"hidden\">\u003cdiv id=\"media-dim\">\u003c/div>\u003c/div>\n  \u003cdiv id=\"vignette\">\u003c/div>\n  \u003cdiv id=\"textshadow\">\u003c/div>\n  \u003cdiv id=\"banner\">\u003c/div>\n  \u003cdiv id=\"text\">\n    \u003cdiv id=\"meta\">\u003cspan id=\"meta-source\">\u003c/span>\u003cspan class=\"dot\">\u003c/span>\u003cspan id=\"meta-date\">\u003c/span>\u003c/div>\n    \u003cdiv id=\"headline\">\u003c/div>\n    \u003cdiv id=\"brief\">\u003c/div>\n  \u003c/div>\n  \u003cdiv id=\"progress\">\u003c/div>\n  \u003cdiv id=\"pausebadge\">\u003csvg viewBox=\"0 0 24 24\">\u003crect x=\"6\" y=\"5\" width=\"4\" height=\"14\" rx=\"1\"/>\u003crect x=\"14\" y=\"5\" width=\"4\" height=\"14\" rx=\"1\"/>\u003c/svg>Paused\u003c/div>\n  \u003cdiv id=\"errors\">\u003c/div>\n\u003c/div>\n\u003cscript>\nconst cfg = window.KIOSK_NEWS_CONFIG || {};\nconst COMPACT = window.KIOSK_NEWS_COMPACT || false;\nconst stories = Array.isArray(cfg.stories) ? cfg.stories : [];\nif (String(cfg.shuffle) === 'true' && stories.length > 1) {\n  // Fisher\u2013Yates on a copy; server order is untouched.\n  for (let i = stories.length - 1; i > 0; i--) {\n    const j = Math.floor(Math.random() * (i + 1));\n    [stories[i], stories[j]] = [stories[j], stories[i]];\n  }\n}\nconst SWIPE_ENABLED = String(cfg.swipeNavigation) !== 'false';\nconst errors = Array.isArray(cfg.errors) ? cfg.errors : [];\n\nconst stage = document.querySelector('#stage');\nconst media = document.querySelector('#media');\nconst headline = document.querySelector('#headline');\nconst brief = document.querySelector('#brief');\nconst metaSource = document.querySelector('#meta-source');\nconst metaDate = document.querySelector('#meta-date');\nconst banner = document.querySelector('#banner');\nconst progress = document.querySelector('#progress');\nconst errorsEl = document.querySelector('#errors');\n\ndocument.body.dataset.textsize = cfg.textSize || 'large';\ndocument.body.dataset.titlepos = cfg.titlePosition || 'top';\ndocument.body.dataset.titlesize = cfg.titleSize || 'medium';\ndocument.body.dataset.titlefont = cfg.titleFont || 'system';\ndocument.body.dataset.compact = String(COMPACT);\nif ((cfg.background || 'dark') === 'light') document.body.classList.add('light');\n// Shadow: 'vignette' (whole-screen edges) or 'edge' (behind title/text only) \u2014\n// never both. shadowOpacity (1-10) drives whichever is active.\nconst SHADOW_STYLE = ['vignette', 'edge'].includes(cfg.shadowStyle) ? cfg.shadowStyle : (cfg.shadowStyle === 'off' ? 'off' : 'vignette');\nconst SHADOW_VIG = String((parseInt(cfg.shadowOpacity ?? cfg.vignetteOpacity ?? '5', 10) || 5) / 10);\ndocument.documentElement.style.setProperty('--vig', SHADOW_STYLE === 'vignette' ? SHADOW_VIG : '0');\nconst textShadowEl = document.querySelector('#textshadow');\nconst stageEl = stage;\nfunction contentRect(el) {\n  // The flex containers stretch to their half of the stage; measure the\n  // actual rendered children so the shadow follows the text, not the box.\n  const kids = [...el.children].filter(k => k.offsetHeight > 0);\n  if (!kids.length) return null;\n  const r = kids[0].getBoundingClientRect();\n  const rect = { top: r.top, bottom: r.bottom, left: r.left, right: r.right };\n  for (const k of kids.slice(1)) {\n    const kr = k.getBoundingClientRect();\n    rect.top = Math.min(rect.top, kr.top); rect.bottom = Math.max(rect.bottom, kr.bottom);\n    rect.left = Math.min(rect.left, kr.left); rect.right = Math.max(rect.right, kr.right);\n  }\n  return rect;\n}\nfunction edgeFor(rect) {\n  // Which stage edge is this element anchored to, and how deep does it reach?\n  const s = stageEl.getBoundingClientRect();\n  const w = rect.right - rect.left, h = rect.bottom - rect.top;\n  // A block spanning most of the stage's width is anchored top/bottom, not\n  // left/right (its side gaps are just margin) \u2014 and vice versa.\n  const cands = [];\n  if (w \u003c= s.width * 0.6) cands.push(\n    { edge: 'left', d: rect.left - s.left, axis: s.width },\n    { edge: 'right', d: s.right - rect.right, axis: s.width });\n  if (h \u003c= s.height * 0.6) cands.push(\n    { edge: 'top', d: rect.top - s.top, axis: s.height },\n    { edge: 'bottom', d: s.bottom - rect.bottom, axis: s.height });\n  if (!cands.length) return null;\n  cands.sort((a, b) => a.d - b.d);\n  const near = cands[0];\n  const dirMap = { top: 'to bottom', bottom: 'to top', left: 'to right', right: 'to left' };\n  // Gradient runs from the anchored edge to just past the element's far side.\n  const depth = (near.edge === 'top' || near.edge === 'bottom')\n    ? (near.edge === 'top' ? rect.bottom - s.top : s.bottom - rect.top)\n    : (near.edge === 'left' ? rect.right - s.left : s.right - rect.left);\n  return { dir: dirMap[near.edge], extent: Math.min(100, (depth / near.axis) * 100 + 6) };\n}\nfunction updateTextShadow() {\n  if (SHADOW_STYLE !== 'edge') { textShadowEl.classList.remove('on'); return; }\n  const layers = [];\n  if (banner.textContent.trim()) { const l = edgeFor(banner.getBoundingClientRect()); if (l) layers.push(l); }\n  const textRect = contentRect(document.querySelector('#text'));\n  if (textRect && textRect.bottom > textRect.top) { const l = edgeFor(textRect); if (l) layers.push(l); }\n  if (!layers.length) { textShadowEl.classList.remove('on'); return; }\n  // If title and text sit on the same edge, one deeper gradient covers both \u2014\n  // never stack two gradients on the same edge (that doubles the darkness).\n  const byEdge = new Map();\n  for (const l of layers) {\n    const key = l.dir;\n    if (!byEdge.has(key) || byEdge.get(key).extent \u003c l.extent) byEdge.set(key, l);\n  }\n  // Light mode: soft white glow instead of black shadow, so the text stays\n  // readable over bright imagery without a dark veil.\n  const rgb = document.body.classList.contains('light') ? '255,255,255' : '0,0,0';\n  const vig = SHADOW_VIG;\n  textShadowEl.style.background = [...byEdge.values()].map(l =>\n    `linear-gradient(${l.dir},rgba(${rgb},${vig}) 0%,rgba(${rgb},0) ${l.extent.toFixed(1)}%)`).join(',');\n  textShadowEl.classList.add('on');\n}\nwindow.addEventListener('resize', () => setTimeout(updateTextShadow, 50));\nif (cfg.progressColor) document.documentElement.style.setProperty('--progress-color', cfg.progressColor);\nbanner.textContent = cfg.title || '';\n\nif (errors.length) {\n  errorsEl.textContent = errors.join(' \u00b7 ');\n}\n\n// Text mode: 'title' shows only the headline; 'brief' shows headline + summary.\nconst TEXT_MODE = cfg.textContent === 'brief' ? 'brief' : 'title';\nbrief.style.display = TEXT_MODE === 'brief' ? '' : 'none';\n\n// imagePosition: 'full' = image behind text; others = image half, text other half.\nconst LAYOUT = ['top', 'bottom', 'left', 'right'].includes(cfg.imagePosition) ? cfg.imagePosition : 'full';\nstage.dataset.layout = COMPACT && LAYOUT === 'full' ? 'full' : LAYOUT;\nstage.dataset.compact = String(COMPACT);\n// Readability dim: only in vignette mode (edge mode's gradient already sits\n// behind the text; an extra full-image veil would look like a black overlay).\ndocument.documentElement.style.setProperty('--dim', (LAYOUT === 'full' && SHADOW_STYLE === 'vignette') ? SHADOW_VIG : '0');\n\nconst showSource = cfg.showSource !== 'false';\nconst showDate = cfg.showDate !== 'false';\nmetaSource.style.display = showSource ? '' : 'none';\nmetaDate.style.display = showDate ? '' : 'none';\n\nfunction preload(url) {\n  return new Promise(resolve => {\n    const img = new Image();\n    img.onload = () => resolve(true);\n    img.onerror = () => resolve(false);\n    img.src = url;\n    setTimeout(() => resolve(false), 8000);\n  });\n}\n\n// Cache in-flight/completed preloads so each image is fetched once; the\n// pre-warm below means the await in show() resolves instantly by the time\n// a story is displayed, so text and image swap in the same frame.\nconst imageCache = new Map();\nfunction preloadCached(url) {\n  if (!imageCache.has(url)) imageCache.set(url, preload(url));\n  return imageCache.get(url);\n}\n// Pre-warm the next story's image while the current one is on screen.\nfunction prewarmNext() {\n  if (stories.length \u003c 2) return;\n  const next = stories[(index + 1) % stories.length];\n  if (next && next.image) preloadCached(next.image);\n}\n\nfunction formatDate(value) {\n  const d = new Date(value);\n  if (isNaN(d)) return '';\n  return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });\n}\n\nlet index = -1;\nconst seconds = Math.max(3, parseInt(cfg.storySeconds || '15', 10) || 15);\n\nlet showTimer = null;\nlet timerDue = 0;  // absolute due time of the pending showTimer\n\n// Tap-to-pause: freeze story advance and the progress bar mid-fill; a second\n// tap resumes with the remaining time. Swipe navigation stays active.\nlet paused = false;\nlet remainingMs = 0;\n\nfunction pauseStory() {\n  if (paused || !showTimer) return;\n  remainingMs = Math.max(0, timerDue - Date.now());\n  clearTimeout(showTimer); showTimer = null;\n  paused = true;\n  document.body.classList.add('paused');\n}\n\nfunction resumeStory() {\n  if (!paused) return;\n  paused = false;\n  document.body.classList.remove('paused');\n  // The CSS progress animation was frozen mid-fill by animation-play-state,\n  // so it simply continues; only the story timer needs restarting.\n  const left = remainingMs > 0 ? remainingMs : seconds * 1000;\n  showTimer = setTimeout(() => show(), left);\n  timerDue = Date.now() + left;\n}\n\nasync function show(next) {\n  if (showTimer) { clearTimeout(showTimer); showTimer = null; }\n  index = (next !== undefined) ? next : (index + 1) % Math.max(stories.length, 1);\n  if (index \u003c 0) index = stories.length - 1;\n  const story = stories[index];\n  if (!story) return;\n  // Wait for the image first (usually instant thanks to prewarmNext), then\n  // swap text and image in the same synchronous block so they always change\n  // together instead of text leading a slow image fetch.\n  let ok = false;\n  if (story.image) ok = await preloadCached(story.image);\n  headline.textContent = story.title || '';\n  brief.textContent = TEXT_MODE === 'brief' ? (story.summary || '') : '';\n  metaSource.textContent = showSource ? (story.source || '') : '';\n  metaDate.textContent = showDate ? formatDate(story.date) : '';\n  // Show image only when one loads; otherwise fall back to flat background.\n  if (ok) {\n    media.style.backgroundImage = `url(\"${story.image.replace(/\"/g, '%22')}\")`;\n    media.classList.remove('hidden');\n  } else {\n    media.style.backgroundImage = '';\n    media.classList.add('hidden');\n  }\n  // Text-side shadow: re-measure after this story's text is in place. Small\n  // delay so layout/fonts settle; rAF alone doesn't fire in background tabs.\n  setTimeout(updateTextShadow, 50);\n  // Progress bar: restart the CSS animation for this story's duration.\n  if (cfg.showProgress !== 'false') {\n    progress.classList.remove('on');\n    void progress.offsetWidth;\n    progress.style.animationDuration = seconds + 's';\n    progress.classList.add('on');\n  }\n  // Pre-warm the next story's image while this one is on screen.\n  prewarmNext();\n  // Advancing to a new story always un-pauses.\n  paused = false;\n  document.body.classList.remove('paused');\n  remainingMs = 0;\n  showTimer = setTimeout(() => show(), seconds * 1000);\n  timerDue = Date.now() + seconds * 1000;\n}\n\n// Swipe navigation: swipe left = next story, swipe right = previous.\n// A tap (no horizontal movement) toggles pause.\n// Pointer events cover touchscreens and mice alike.\nif (SWIPE_ENABLED) {\n  let startX = null, startY = null, startT = 0;\n  stage.addEventListener('pointerdown', e => { startX = e.clientX; startY = e.clientY; startT = Date.now(); });\n  stage.addEventListener('pointerup', e => {\n    if (startX === null) return;\n    const dx = e.clientX - startX, dy = e.clientY - startY;\n    startX = startY = null;\n    if (Date.now() - startT > 1200) return;          // slow press \u2260 swipe\n    if (Math.abs(dx) \u003c 60 || Math.abs(dx) \u003c Math.abs(dy) * 1.5) {\n      if (Math.abs(dx) \u003c 20 && Date.now() - startT \u003c 500) {  // a clean tap\n        paused ? resumeStory() : pauseStory();\n      }\n      return;                                        // too small or too vertical\n    }\n    paused = false;                                  // swiping away clears pause\n    document.body.classList.remove('paused');\n    remainingMs = 0;\n    show(index + (dx \u003c 0 ? 1 : -1));\n  });\n  stage.addEventListener('pointercancel', () => { startX = startY = null; });\n  // Block scroll interference without disabling taps entirely.\n  stage.style.touchAction = 'pan-y';\n} else {\n  // Swipe disabled: taps still toggle pause.\n  let downT = 0;\n  stage.addEventListener('pointerdown', e => { downT = Date.now(); });\n  stage.addEventListener('pointerup', () => {\n    if (Date.now() - downT \u003c 500) paused ? resumeStory() : pauseStory();\n  });\n}\n\n// Page refresh: re-fetch the display page (fresh stories) every refreshInterval.\nconst refreshMinutes = Math.max(1, parseInt(cfg.refreshInterval || '60', 10) || 60);\nsetTimeout(() => location.reload(), refreshMinutes * 60 * 1000);\n\nshow(0);\n\u003c/script>\n\u003c/body>\n\u003c/html>\n";</script>
+</head>
+<body>
+<div id="controls">
+  <h1>Settings playground</h1>
+  <p>Live-test display.html with any settings. Runs from a static file — no add-on needed. Serve the repo root (e.g. <code>python3 -m http.server</code>) so it can fetch <code>web/display.html</code>.</p>
+
+  <h2>Shadow</h2>
+  <label>Style<select id="shadowStyle">
+    <option value="vignette">Vignette (screen edges)</option>
+    <option value="edge">Text-side (behind text)</option>
+    <option value="off">Off</option>
+  </select></label>
+  <label>Shadow opacity: <span id="opVal">5</span>
+    <input type="range" id="shadowOpacity" min="1" max="10" value="5">
+  </label>
+
+  <h2>Layout</h2>
+  <label>Image position<select id="imagePosition">
+    <option value="full">Full screen image, text over it</option>
+    <option value="top">Image top, text below</option>
+    <option value="bottom">Image bottom, text above</option>
+    <option value="left">Image left, text right</option>
+    <option value="right">Image right, text left</option>
+  </select></label>
+  <label>Text shown<select id="textContent">
+    <option value="title">Headline only</option>
+    <option value="brief">Brief / summary</option>
+  </select></label>
+  <label>Text size<select id="textSize">
+    <option value="small">Small</option><option value="medium">Medium</option>
+    <option value="large" selected>Large</option><option value="xlarge">Extra large</option>
+  </select></label>
+  <label>Compact card<input type="checkbox" id="compact" style="vertical-align:middle"></label>
+
+  <h2>Text</h2>
+  <label>Title<input type="text" id="title" placeholder="e.g. Headlines"></label>
+  <label>Title position<select id="titlePosition">
+    <option value="top">Top</option><option value="bottom">Bottom</option>
+  </select></label>
+  <div class="row">
+    <label>Title size<select id="titleSize">
+      <option value="small">Small</option><option value="medium" selected>Medium</option><option value="large">Large</option>
+    </select></label>
+    <label>Title font<select id="titleFont">
+      <option value="system">Sans</option><option value="serif">Serif</option><option value="mono">Mono</option>
+    </select></label>
+  </div>
+  <div class="row">
+    <label>Show source<select id="showSource"><option value="true">Yes</option><option value="false">No</option></select></label>
+    <label>Show date<select id="showDate"><option value="true">Yes</option><option value="false">No</option></select></label>
+  </div>
+
+  <h2>Theme & progress</h2>
+  <label>Theme<select id="background">
+    <option value="dark">Dark</option><option value="light">Light</option>
+  </select></label>
+  <label>Progress bar<select id="showProgress"><option value="true">On</option><option value="false">Off</option></select></label>
+  <label>Progress color<input type="color" id="progressColor" value="#38bdf8"></label>
+
+  <h2>Timing</h2>
+  <div class="row">
+    <label>Sec/story<input type="number" id="storySeconds" min="3" max="120" value="15"></label>
+    <label>Shuffle<select id="shuffle"><option value="false">No</option><option value="true">Yes</option></select></label>
+  </div>
+  <label>Swipe nav<select id="swipeNavigation"><option value="true">On</option><option value="false">Off</option></select></label>
+
+  <h2>Stories</h2>
+  <div id="stories"></div>
+  <button id="add-story">＋ Add story</button>
+
+  <h2>Preview size</h2>
+  <label>Viewport
+    <select id="viewportSize">
+      <option value="">Fill available space</option>
+      <option value="1920x1080">1920×1080 (TV)</option>
+      <option value="1280x800">1280×800 (tablet)</option>
+      <option value="800x600">800×600 (card, scaled)</option>
+    </select>
+  </label>
+
+  <div id="bar" style="padding:10px 0 0">
+    <button id="reload">Apply</button>
+    <button id="auto" class="secondary">Auto-apply: on</button>
+  </div>
+</div>
+
+<div id="stagewrap">
+  <div id="viewport"><iframe id="frame"></iframe></div>
+</div>
+
+<script>
+const FIELDS = ['shadowStyle','shadowOpacity','imagePosition','textContent','textSize','compact','title','titlePosition','titleSize','titleFont','showSource','showDate','background','showProgress','progressColor','storySeconds','shuffle','swipeNavigation'];
+const $ = id => document.getElementById(id);
+let auto = true, rebuildTimer = null;
+
+function storyBlock(data = {}) {
+  const div = document.createElement('div');
+  div.className = 'story';
+  div.innerHTML = `<button class="rm" title="Remove">✕</button>
+    <input type="text" class="s-title" placeholder="Headline" value="${(data.title||'').replace(/"/g,'&quot;')}">
+    <input type="text" class="s-summary" placeholder="Summary (shown in brief mode)" value="${(data.summary||'').replace(/"/g,'&quot;')}">
+    <input type="url" class="s-image" placeholder="Image URL" value="${data.image||''}">
+    <input type="text" class="s-source" placeholder="Source name" value="${data.source||''}" style="width:45%;display:inline"> <input type="text" class="s-date" placeholder="2026-09-04" value="${data.date||''}" style="width:50%;display:inline">`;
+  div.querySelector('.rm').onclick = () => { div.remove(); schedule(); };
+  div.querySelectorAll('input').forEach(i => i.addEventListener('input', schedule));
+  return div;
+}
+function sampleStory() {
+  return storyBlock({
+    title: 'Rivers burst their banks as record rainfall batters the coast for a third consecutive day',
+    summary: 'Emergency services evacuated hundreds of residents overnight as forecasters warned of further downpours through the weekend.',
+    image: 'https://picsum.photos/seed/' + Math.floor(Math.random()*999) + '/1600/900',
+    source: 'BBC News', date: '2026-09-04'
+  });
+}
+$('add-story').onclick = () => { $('stories').append(sampleStory()); schedule(); };
+$('stories').append(storyBlock({
+  title: 'Rivers burst their banks as record rainfall batters the coast for a third consecutive day',
+  summary: 'Emergency services evacuated hundreds of residents overnight as forecasters warned of further downpours through the weekend.',
+  image: 'https://picsum.photos/seed/kiosknews/1600/900', source: 'BBC News', date: '2026-09-04'
+}));
+
+function collect() {
+  const cfg = {};
+  for (const f of FIELDS) {
+    const el = $(f);
+    cfg[f] = el.type === 'checkbox' ? String(el.checked) : el.value;
+  }
+  cfg.errors = [];
+  cfg.stories = [...$('stories').children].map(div => ({
+    title: div.querySelector('.s-title').value,
+    summary: div.querySelector('.s-summary').value,
+    image: div.querySelector('.s-image').value,
+    source: div.querySelector('.s-source').value,
+    date: div.querySelector('.s-date').value,
+  })).filter(s => s.title || s.image);
+  return cfg;
+}
+
+async function render() {
+  let tpl = window.EMBEDDED_DISPLAY || "";
+  if (!tpl) {
+    try { tpl = await (await fetch('../web/display.html')).text(); }
+    catch (e) {
+      $('frame').srcdoc = '<p style="font:14px system-ui;color:#f87171;padding:20px">Could not load ../web/display.html — serve the repo root over http for the served variant</p>';
+      return;
+    }
+  }
+  const cfg = collect();
+  const compact = cfg.compact === 'true'; delete cfg.compact;
+  const injected = JSON.stringify(cfg).replace(/</g, '\\u003c');
+  $('frame').srcdoc = tpl.replace('</head>',
+    `<script>window.KIOSK_NEWS_CONFIG=${injected};window.KIOSK_NEWS_COMPACT=${compact};<\/script></head>`, 1);
+}
+
+function applyViewport() {
+  const v = $('viewportSize').value;
+  const vp = $('viewport');
+  if (!v) { vp.style.width = ''; vp.style.height = ''; vp.style.margin = '14px'; return; }
+  const [w, h] = v.split('x').map(Number);
+  const avail = vp.parentElement.getBoundingClientRect();
+  const scale = Math.min((avail.width - 28) / w, (avail.height - 28) / h, 1);
+  vp.style.width = (w * scale) + 'px'; vp.style.height = (h * scale) + 'px'; vp.style.margin = '14px auto';
+}
+
+function schedule() {
+  if (!auto) return;
+  clearTimeout(rebuildTimer);
+  rebuildTimer = setTimeout(render, 400);
+}
+for (const f of FIELDS) $(f).addEventListener('input', e => {
+  if (f === 'shadowOpacity') $('opVal').textContent = e.target.value;
+  schedule();
+});
+$('viewportSize').addEventListener('change', applyViewport);
+$('reload').onclick = render;
+$('auto').onclick = () => { auto = !auto; $('auto').textContent = 'Auto-apply: ' + (auto ? 'on' : 'off'); if (auto) render(); };
+window.addEventListener('resize', applyViewport);
+applyViewport();
+render();
+</script>
+</body>
+</html>
