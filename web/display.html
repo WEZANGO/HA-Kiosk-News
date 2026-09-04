@@ -120,6 +120,9 @@ if ((cfg.background || 'dark') === 'light') document.body.classList.add('light')
 // never both. shadowOpacity (1-10) drives whichever is active.
 const SHADOW_STYLE = ['vignette', 'edge'].includes(cfg.shadowStyle) ? cfg.shadowStyle : (cfg.shadowStyle === 'off' ? 'off' : 'vignette');
 const SHADOW_VIG = String((parseInt(cfg.shadowOpacity ?? cfg.vignetteOpacity ?? '5', 10) || 5) / 10);
+// shadowReach: 'auto' follows the text; otherwise % of the screen the shadow spans.
+const SHADOW_REACH = cfg.shadowReach === 'auto' || !cfg.shadowReach ? 0
+  : Math.max(10, Math.min(100, parseInt(cfg.shadowReach, 10) || 0));
 document.documentElement.style.setProperty('--vig', SHADOW_STYLE === 'vignette' ? SHADOW_VIG : '0');
 const textShadowEl = document.querySelector('#textshadow');
 const stageEl = stage;
@@ -138,7 +141,7 @@ function contentRect(el) {
   return rect;
 }
 function edgeFor(rect) {
-  // Which stage edge is this element anchored to, and how deep does it reach?
+  // Which stage edge is this element anchored to?
   const s = stageEl.getBoundingClientRect();
   const w = rect.right - rect.left, h = rect.bottom - rect.top;
   // A block spanning most of the stage's width is anchored top/bottom, not
@@ -154,7 +157,9 @@ function edgeFor(rect) {
   cands.sort((a, b) => a.d - b.d);
   const near = cands[0];
   const dirMap = { top: 'to bottom', bottom: 'to top', left: 'to right', right: 'to left' };
-  // Gradient runs from the anchored edge to just past the element's far side.
+  // "auto" reach: gradient runs from the anchored edge to just past the
+  // element's far side. Fixed settings use that % of the screen instead.
+  if (SHADOW_REACH > 0) return { dir: dirMap[near.edge], extent: SHADOW_REACH };
   const depth = (near.edge === 'top' || near.edge === 'bottom')
     ? (near.edge === 'top' ? rect.bottom - s.top : s.bottom - rect.top)
     : (near.edge === 'left' ? rect.right - s.left : s.right - rect.left);
@@ -178,8 +183,11 @@ function updateTextShadow() {
   // readable over bright imagery without a dark veil.
   const rgb = document.body.classList.contains('light') ? '255,255,255' : '0,0,0';
   const vig = SHADOW_VIG;
+  // Hold near-full strength across most of the reach, then fade — a plain
+  // linear fade from the edge dilutes the shadow and reads weak.
+  const stop = a => a === 100 ? 100 : (a * 0.55).toFixed(1);
   textShadowEl.style.background = [...byEdge.values()].map(l =>
-    `linear-gradient(${l.dir},rgba(${rgb},${vig}) 0%,rgba(${rgb},0) ${l.extent.toFixed(1)}%)`).join(',');
+    `linear-gradient(${l.dir},rgba(${rgb},${vig}) 0%,rgba(${rgb},${(vig * 0.92).toFixed(2)}) ${stop(l.extent)}%,rgba(${rgb},0) ${l.extent.toFixed(1)}%)`).join(',');
   textShadowEl.classList.add('on');
 }
 window.addEventListener('resize', () => setTimeout(updateTextShadow, 50));

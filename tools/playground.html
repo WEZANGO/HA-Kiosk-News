@@ -45,6 +45,13 @@ body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,sa
   <label>Shadow opacity: <span id="opVal">5</span>
     <input type="range" id="shadowOpacity" min="1" max="10" value="5">
   </label>
+  <label>Reach (text-side)<select id="shadowReach">
+    <option value="auto">Auto — to just past text</option>
+    <option value="30">30% of screen</option>
+    <option value="50">50% of screen</option>
+    <option value="75">75% of screen</option>
+    <option value="100">Full screen</option>
+  </select></label>
 
   <h2>Layout</h2>
   <label>Image position<select id="imagePosition">
@@ -121,7 +128,7 @@ body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,sa
 </div>
 
 <script>
-const FIELDS = ['shadowStyle','shadowOpacity','imagePosition','textContent','textSize','compact','title','titlePosition','titleSize','titleFont','showSource','showDate','background','showProgress','progressColor','storySeconds','shuffle','swipeNavigation'];
+const FIELDS = ['shadowStyle','shadowOpacity','shadowReach','imagePosition','textContent','textSize','compact','title','titlePosition','titleSize','titleFont','showSource','showDate','background','showProgress','progressColor','storySeconds','shuffle','swipeNavigation'];
 const $ = id => document.getElementById(id);
 let auto = true, rebuildTimer = null;
 
