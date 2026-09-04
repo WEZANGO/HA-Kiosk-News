@@ -194,7 +194,7 @@ const LAYOUT = ['top', 'bottom', 'left', 'right'].includes(cfg.imagePosition) ? 
 stage.dataset.layout = COMPACT && LAYOUT === 'full' ? 'full' : LAYOUT;
 stage.dataset.compact = String(COMPACT);
 // Dim media slightly so text stays readable in 'full' mode.
-document.documentElement.style.setProperty('--dim', LAYOUT === 'full' ? '0.35' : '0');
+document.documentElement.style.setProperty('--dim', LAYOUT === 'full' ? SHADOW_VIG : '0');
 
 const showSource = cfg.showSource !== 'false';
 const showDate = cfg.showDate !== 'false';
