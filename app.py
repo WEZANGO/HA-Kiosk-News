@@ -36,6 +36,8 @@ DEFAULTS = {
     "showSource": "true",
     "showDate": "true",
     "showProgress": "true",
+    "progressColor": "#38bdf8",
+    "proxyImages": "true",
     "background": "dark",
     "vignetteOpacity": "5",
 }
@@ -191,8 +193,11 @@ def proxy_image_url(url: str, token: str) -> str:
     return f"/api/image?url={quote(url, safe='')}&auth={token}"
 
 
-def aggregate(sources: list[dict], token: str = "") -> dict:
+def aggregate(sources: list[dict], config: dict | None = None) -> dict:
     """Fetch all sources; interleave their stories. Returns {stories, errors}."""
+    config = config or {}
+    proxy_images = str(config.get("proxyImages", "true")) != "false"
+    token = access_token()
     stories: list[dict] = []
     errors: list[str] = []
     for source in sources:
@@ -205,7 +210,7 @@ def aggregate(sources: list[dict], token: str = "") -> dict:
             stories.append({
                 "title": story["title"],
                 "summary": story["summary"],
-                "image": proxy_image_url(story["image"] or source.get("fallbackImage", ""), token) if (story["image"] or source.get("fallbackImage")) else "",
+                "image": (proxy_image_url(story["image"] or source.get("fallbackImage", ""), token) if proxy_images else (story["image"] or source.get("fallbackImage", ""))) if (story["image"] or source.get("fallbackImage")) else "",
                 "link": story["link"],
                 "date": story["date"],
                 "source": source["name"],
@@ -228,7 +233,7 @@ body{max-width:940px;margin:0 auto;padding:28px;font:16px system-ui,sans-serif;b
 <h1>Kiosk News Displays</h1><p>Create named news displays from RSS feeds; point a kiosk or dashboard iframe at the display link. No API keys needed.</p>
 <section><h2>Your news displays</h2><div class="new-buttons"><button id="new-full" class="wide-button">＋ Add Full Screen Display</button><button id="new-compact" class="wide-button">＋ Add Card</button></div></section>
 <section><h2>Displays</h2><p>Use <em>Full screen</em> for a wall/tablet display and <em>Compact</em> for a dashboard iframe card. Ingress URLs work within Home Assistant; direct URLs require this app's port to be reachable on your LAN.</p><div id="list">Loading…</div></section>
-<div id="editor-modal" class="modal-overlay" hidden><div class="modal-content"><h2 id="modal-title">New display</h2><form id="editor"><input id="edit-id" type="hidden"><label>Name<input name="name" required placeholder="Morning headlines"></label><div id="sources" style="grid-column:1/-1;display:grid;gap:12px"></div><button type="button" id="add-source" class="secondary wide">＋ Add another feed</button><h3 class="wide">Presentation</h3><label>Text shown<select name="textContent"><option value="title">Headline only</option><option value="brief">Brief / summary</option></select></label><label>Image position<select name="imagePosition"><option value="full">Full screen image, text over it</option><option value="top">Image top, text below</option><option value="bottom">Image bottom, text above</option><option value="left">Image left, text right</option><option value="right">Image right, text left</option></select></label><label>Text size<select name="textSize"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option><option value="xlarge">Extra large</option></select></label><label>Theme<select name="background"><option value="dark">Dark</option><option value="light">Light</option></select></label><label>Optional title<input name="title" placeholder="e.g. Headlines"></label><label>Title position<select name="titlePosition"><option value="top">Top</option><option value="bottom">Bottom</option></select></label><label>Title font<select name="titleFont"><option value="system">System sans</option><option value="serif">Serif</option><option value="mono">Monospace</option></select></label><label>Show source name<select name="showSource"><option value="true">Yes</option><option value="false">No</option></select></label><label>Show date<select name="showDate"><option value="true">Yes</option><option value="false">No</option></select></label><label>Progress bar<select name="showProgress"><option value="true">Yes</option><option value="false">No</option></select></label><label>Seconds per story<input name="storySeconds" type="number" min="3" max="120" value="15"></label><label>Refresh feeds every (minutes)<input name="refreshInterval" type="number" min="1" max="1440" value="60"></label><label>Max stories<input name="maxStories" type="number" min="1" max="50" value="10"></label><label>Vignette opacity (1-10)<input name="vignetteOpacity" type="number" min="1" max="10" value="5"></label><div class="modal-buttons"><button type="submit">Save</button><button type="button" id="cancel" class="secondary">Cancel</button></div></form></div></div>
+<div id="editor-modal" class="modal-overlay" hidden><div class="modal-content"><h2 id="modal-title">New display</h2><form id="editor"><input id="edit-id" type="hidden"><label>Name<input name="name" required placeholder="Morning headlines"></label><div id="sources" style="grid-column:1/-1;display:grid;gap:12px"></div><button type="button" id="add-source" class="secondary wide">＋ Add another feed</button><h3 class="wide">Presentation</h3><label>Text shown<select name="textContent"><option value="title">Headline only</option><option value="brief">Brief / summary</option></select></label><label>Image position<select name="imagePosition"><option value="full">Full screen image, text over it</option><option value="top">Image top, text below</option><option value="bottom">Image bottom, text above</option><option value="left">Image left, text right</option><option value="right">Image right, text left</option></select></label><label>Text size<select name="textSize"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option><option value="xlarge">Extra large</option></select></label><label>Theme<select name="background"><option value="dark">Dark</option><option value="light">Light</option></select></label><label>Optional title<input name="title" placeholder="e.g. Headlines"></label><label>Title position<select name="titlePosition"><option value="top">Top</option><option value="bottom">Bottom</option></select></label><label>Title font<select name="titleFont"><option value="system">System sans</option><option value="serif">Serif</option><option value="mono">Monospace</option></select></label><label>Show source name<select name="showSource"><option value="true">Yes</option><option value="false">No</option></select></label><label>Show date<select name="showDate"><option value="true">Yes</option><option value="false">No</option></select></label><label>Progress bar<select name="showProgress"><option value="true">Yes</option><option value="false">No</option></select></label><label>Progress bar color<input name="progressColor" type="color" value="#38bdf8"></label><label>Image loading<select name="proxyImages"><option value="true">Through Home Assistant (works on isolated VLANs)</option><option value="false">Directly from the internet (faster, needs internet on the device)</option></select></label><label>Seconds per story<input name="storySeconds" type="number" min="3" max="120" value="15"></label><label>Refresh feeds every (minutes)<input name="refreshInterval" type="number" min="1" max="1440" value="60"></label><label>Max stories<input name="maxStories" type="number" min="1" max="50" value="10"></label><label>Vignette opacity (1-10)<input name="vignetteOpacity" type="number" min="1" max="10" value="5"></label><div class="modal-buttons"><button type="submit">Save</button><button type="button" id="cancel" class="secondary">Cancel</button></div></form></div></div>
 <div id="preview-overlay" hidden><div id="preview-wrap"><div id="preview-bar"><strong id="preview-title">Preview</strong><button type="button" id="preview-close" class="secondary">✕ Close</button></div><iframe id="preview-frame" title="Display preview"></iframe></div></div>
 <script>const f=document.querySelector('#editor'),list=document.querySelector('#list'),cancel=document.querySelector('#cancel'),modal=document.querySelector('#editor-modal'),modalTitle=document.querySelector('#modal-title'),sources=document.querySelector('#sources');let items=[];
 const base=location.pathname.replace(/\/$/,'');
@@ -318,7 +323,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             dashboards, index = self.find(identifier)
             config = dashboards[index]
-            feed = aggregate(config.get("sources", []), access_token())
+            feed = aggregate(config.get("sources", []), config)
             self.send_html(self.render_display(config, compact, feed["stories"], feed["errors"]))
         except KeyError as error:
             self.send_html(f"<h1>Kiosk News Display</h1><p>{error}</p>", 404)
@@ -327,7 +332,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             dashboards, index = self.find(identifier)
             config = dashboards[index]
-            feed = aggregate(config.get("sources", []), access_token())
+            feed = aggregate(config.get("sources", []), config)
             self.send_json({"html": self.render_display(config, config.get("kind") == "compact", feed["stories"], feed["errors"])})
         except KeyError as error:
             self.send_json({"error": str(error)}, 404)

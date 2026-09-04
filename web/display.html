@@ -50,7 +50,7 @@ body[data-titlesize="medium"] #banner{font-size:4.2vh}
 body[data-titlesize="large"] #banner{font-size:5.6vh}
 body[data-titlefont="serif"] #banner{font-family:Georgia,serif}
 body[data-titlefont="mono"] #banner{font-family:ui-monospace,Menlo,monospace}
-#progress{position:absolute;left:0;bottom:0;height:4px;background:var(--accent);width:0;z-index:7}
+#progress{position:absolute;left:0;bottom:0;height:4px;background:var(--progress-color,var(--accent));width:0;z-index:7}
 #progress.on{animation:grow linear}
 @keyframes grow{from{width:0}to{width:100%}}
 /* Errors */
@@ -95,6 +95,7 @@ document.body.dataset.titlefont = cfg.titleFont || 'system';
 document.body.dataset.compact = String(COMPACT);
 if ((cfg.background || 'dark') === 'light') document.body.classList.add('light');
 document.documentElement.style.setProperty('--vig', String((parseInt(cfg.vignetteOpacity || '5', 10) || 5) / 10));
+if (cfg.progressColor) document.documentElement.style.setProperty('--progress-color', cfg.progressColor);
 banner.textContent = cfg.title || '';
 
 if (errors.length) {
