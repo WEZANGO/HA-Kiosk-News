@@ -235,8 +235,9 @@ function preloadCached(url) {
 }
 // Pre-warm the next story's image while the current one is on screen.
 function prewarmNext() {
-  if (stories.length < 2) return;
-  const next = stories[(index + 1) % stories.length];
+  const visible = qualityStories();
+  if (visible.length < 2) return;
+  const next = visible[(index + 1) % visible.length];
   if (next && next.image) preloadCached(next.image);
 }
 
@@ -248,6 +249,24 @@ function formatDate(value) {
 
 let index = -1;
 const seconds = Math.max(3, parseInt(cfg.storySeconds || '15', 10) || 15);
+
+// Device-relative image quality: 'medium' demands >=50% of the screen width,
+// 'high' >=85%. Uses the width the feed declared for the image; stories with
+// unknown width always pass (a feed that doesn't say can't be judged).
+const MIN_FRACTION = cfg.minImageRes === 'high' ? 0.85 : cfg.minImageRes === 'medium' ? 0.5 : 0;
+function passesQuality(story) {
+  if (!MIN_FRACTION) return true;
+  const w = Number(story.imageWidth);
+  if (!(w >= 0)) return true;  // unknown width: give it the benefit of the doubt
+  return w >= Math.round(window.screen.width * MIN_FRACTION);
+}
+// Screen-sized kiosks report devicePixelRatio>1 sometimes; compare against
+// CSS pixels (window.screen.width), which is what layout actually uses.
+const qualityStories = () => stories.filter(passesQuality);
+if (MIN_FRACTION) {
+  const hidden = stories.length - qualityStories().length;
+  if (hidden) errorsEl.textContent = [errors.join(' · '), `${hidden} story/stories hidden by image quality`].filter(Boolean).join(' · ');
+}
 
 let showTimer = null;
 let timerDue = 0;  // absolute due time of the pending showTimer
@@ -278,9 +297,10 @@ function resumeStory() {
 
 async function show(next) {
   if (showTimer) { clearTimeout(showTimer); showTimer = null; }
-  index = (next !== undefined) ? next : (index + 1) % Math.max(stories.length, 1);
-  if (index < 0) index = stories.length - 1;
-  const story = stories[index];
+  const visible = qualityStories();
+  index = (next !== undefined) ? next : (index + 1) % Math.max(visible.length, 1);
+  if (index < 0) index = visible.length - 1;
+  const story = visible[index];
   if (!story) return;
   // Wait for the image first (usually instant thanks to prewarmNext), then
   // swap text and image in the same synchronous block so they always change

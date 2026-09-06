@@ -1,7 +1,7 @@
 FROM ghcr.io/home-assistant/base:latest
 
 LABEL \
-  io.hass.version="0.1.8" \
+  io.hass.version="0.1.9" \
   io.hass.type="app" \
   io.hass.arch="aarch64|amd64|armv7|armhf|i386"
 

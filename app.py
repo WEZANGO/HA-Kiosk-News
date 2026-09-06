@@ -39,6 +39,8 @@ DEFAULTS = {
     "showProgress": "true",
     "progressColor": "#38bdf8",
     "proxyImages": "true",
+    "requireImage": "false",        # drop stories without an image
+    "minImageRes": "any",           # any | medium (50% of screen) | high (85% of screen)
     "shuffle": "false",
     "swipeNavigation": "true",
     "background": "dark",
@@ -62,6 +64,41 @@ def save_dashboards(dashboards: list[dict]) -> None:
     temporary = DATA_FILE.with_suffix(".tmp")
     temporary.write_text(json.dumps(dashboards, indent=2) + "\n")
     temporary.replace(DATA_FILE)
+
+
+GLOBAL_FEEDS_FILE = DATA_FILE.parent / "global_feeds.json"
+
+
+def load_global_feeds() -> list[dict]:
+    """Named RSS feeds shared across all displays; selectable per dashboard."""
+    try:
+        value = json.loads(GLOBAL_FEEDS_FILE.read_text())
+        return value if isinstance(value, list) else []
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+
+def save_global_feeds(feeds: list[dict]) -> None:
+    temporary = GLOBAL_FEEDS_FILE.with_suffix(".tmp")
+    temporary.write_text(json.dumps(feeds, indent=2) + "\n")
+    temporary.replace(GLOBAL_FEEDS_FILE)
+
+
+def clean_global_feed(payload: dict, existing: dict | None = None) -> dict:
+    name = str(payload.get("name", "")).strip()
+    url = str(payload.get("url", "")).strip()
+    if not name:
+        raise ValueError("Feed name is required.")
+    if not url.lower().startswith(("http://", "https://")):
+        raise ValueError("Feed URLs must start with http:// or https://.")
+    image = str(payload.get("fallbackImage", "")).strip()
+    if image and not image.lower().startswith(("http://", "https://")):
+        raise ValueError("Fallback image URLs must start with http:// or https://.")
+    raw_id = str(existing["id"] if existing else (payload.get("id") or name)).lower()
+    identifier = re.sub(r"[^a-z0-9-]+", "-", raw_id).strip("-")[:48]
+    if not identifier:
+        raise ValueError("The feed name does not produce a valid ID.")
+    return {"id": identifier, "name": name, "url": url, "fallbackImage": image}
 
 
 def access_token() -> str:
@@ -174,6 +211,7 @@ def fetch_feed(url: str) -> list[dict]:
                     if sub_name in ("thumbnail", "content") and sub.get("url"):
                         consider(sub.get("url", ""), sub.get("width", ""))
         story["image"] = best["url"]
+        story["imageWidth"] = best["width"]  # -1 = unknown; used by min-resolution filtering
         # encoded HTML often carries the image; scan for it
         if not story["image"]:
             match = re.search(r"<img[^>]+src=[\"']([^\"']+)", story["summary"]) if story["summary"] else None
@@ -202,9 +240,11 @@ def aggregate(sources: list[dict], config: dict | None = None) -> dict:
     """Fetch all sources; interleave their stories. Returns {stories, errors}."""
     config = config or {}
     proxy_images = str(config.get("proxyImages", "true")) != "false"
+    require_image = str(config.get("requireImage", "false")) == "true"
     token = access_token()
     stories: list[dict] = []
     errors: list[str] = []
+    dropped = 0
     for source in sources:
         try:
             fetched = fetch_feed(source["url"])
@@ -212,14 +252,21 @@ def aggregate(sources: list[dict], config: dict | None = None) -> dict:
             errors.append(f"{source['name']}: {error}")
             continue
         for position, story in enumerate(fetched):
+            image = story["image"] or source.get("fallbackImage", "")
+            if require_image and not image:
+                dropped += 1
+                continue
             stories.append({
                 "title": story["title"],
                 "summary": story["summary"],
-                "image": (proxy_image_url(story["image"] or source.get("fallbackImage", ""), token) if proxy_images else (story["image"] or source.get("fallbackImage", ""))) if (story["image"] or source.get("fallbackImage")) else "",
+                "image": (proxy_image_url(image, token) if proxy_images else image) if image else "",
+                "imageWidth": story.get("imageWidth", -1),  # for device-relative quality filter
                 "link": story["link"],
                 "date": story["date"],
                 "source": source["name"],
             })
+    if dropped:
+        errors.append(f"{dropped} story/stories hidden by image filter")
     # Interleave so a chatty source doesn't dominate; keep order stable.
     by_source: dict[str, list[dict]] = {}
     for story in stories:
@@ -237,10 +284,11 @@ def admin_page() -> str:
 body{max-width:940px;margin:0 auto;padding:28px;font:16px system-ui,sans-serif;background:#0f172a;color:#f8fafc}h1{margin-bottom:4px}p{color:#cbd5e1}section{margin:24px 0;padding:22px;border:1px solid #334155;border-radius:12px;background:#1e293b}form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}label{display:grid;gap:5px;color:#cbd5e1;font-size:.9rem}input,select,button{padding:10px;border-radius:7px;font:inherit}input,select{border:1px solid #64748b;background:#0f172a;color:white}button{border:0;background:#38bdf8;color:#082f49;font-weight:700;cursor:pointer}.wide{grid-column:1/-1}.row{display:block;border-top:1px solid #334155;padding:15px 0}.row:first-child{border:0}.row strong{font-size:1.05rem}.dash-top{display:flex;align-items:baseline;gap:12px;margin-bottom:8px}.dash-top small{color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.link-line{display:flex;align-items:center;gap:10px;margin:6px 0}.link-label{min-width:88px;color:#94a3b8;font-size:.84rem;flex-shrink:0}.link-url{flex:1;color:#7dd3fc;font-size:.86rem;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.link-url:hover{text-decoration:underline}.copy{flex-shrink:0;background:#334155;color:#e2e8f0;padding:6px 12px;font-size:.9rem;cursor:pointer;border-radius:6px;border:0}.copy:hover{background:#475569}.dash-actions{display:flex;gap:10px;margin-top:10px}.dash-actions button{padding:8px 18px}.secondary{background:#334155;color:#fff}.danger{background:#b91c1c;color:#fff}.modal-overlay{position:fixed;inset:0;z-index:100;display:grid;justify-items:center;align-items:start;padding:20px;background:rgba(3,7,18,.85);overflow-y:auto}.modal-overlay[hidden]{display:none}.modal-content{width:min(100%,680px);max-height:calc(100vh-40px);overflow:auto;padding:24px;border-radius:14px;background:#1e293b}.modal-content h2{margin-top:0}.source-block{grid-column:1/-1;border:1px solid #334155;border-radius:10px;padding:12px;background:#0b1222;display:grid;gap:10px}.source-block h4{margin:0;color:#e2e8f0}.source-block .source-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}.source-block .source-fields .wide-field{grid-column:1/-1}.source-remove{background:#7f1d1d;color:#fff;border:0;border-radius:7px;padding:8px 14px;cursor:pointer;font:inherit;justify-self:start}.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#22c55e;color:#052e16;padding:12px 22px;border-radius:10px;font-weight:700;z-index:300;display:flex;gap:8px;align-items:center}#preview-overlay{position:fixed;inset:0;z-index:200;background:rgba(3,7,18,.88);display:grid;place-items:center;padding:24px}#preview-overlay[hidden]{display:none}#preview-wrap{width:min(96vw,1400px);height:min(92vh,1000px);display:flex;flex-direction:column;background:#0f172a;border:1px solid #334155;border-radius:12px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.5)}#preview-bar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:#1e293b;border-bottom:1px solid #334155;color:#e2e8f0}#preview-frame{flex:1;border:0;width:100%;background:#0b1222}</style></head><body>
 <h1>Kiosk News Displays</h1><p>Create named news displays from RSS feeds; point a kiosk or dashboard iframe at the display link. No API keys needed.</p>
 <section><h2>Your news displays</h2><div class="new-buttons"><button id="new-full" class="wide-button">＋ Add Full Screen Display</button><button id="new-compact" class="wide-button">＋ Add Card</button></div></section>
+<section><h2>Global RSS feeds</h2><p>Reusable feeds available to every display. Add them here once, then tick the ones a display should use.</p><div id="feed-list">Loading…</div><form id="feed-form" style="margin-top:14px;grid-template-columns:repeat(3,minmax(0,1fr))"><input id="feed-edit-id" type="hidden"><label>Name<input id="feed-name" placeholder="BBC News" required></label><label>RSS feed URL<input id="feed-url" type="url" placeholder="https://feeds.bbci.co.uk/news/rss.xml" required></label><label>Fallback image URL (optional)<input id="feed-image" type="url" placeholder="https://…jpg"></label><div style="grid-column:1/-1;display:flex;gap:10px"><button type="submit" id="feed-save">Add feed</button><button type="button" id="feed-cancel" class="secondary" hidden>Cancel edit</button></div></form></section>
 <section><h2>Displays</h2><p>Use <em>Full screen</em> for a wall/tablet display and <em>Compact</em> for a dashboard iframe card. Ingress URLs work within Home Assistant; direct URLs require this app's port to be reachable on your LAN.</p><div id="list">Loading…</div></section>
-<div id="editor-modal" class="modal-overlay" hidden><div class="modal-content"><h2 id="modal-title">New display</h2><form id="editor"><input id="edit-id" type="hidden"><label>Name<input name="name" required placeholder="Morning headlines"></label><div id="sources" style="grid-column:1/-1;display:grid;gap:12px"></div><button type="button" id="add-source" class="secondary wide">＋ Add another feed</button><h3 class="wide">Presentation</h3><label>Text shown<select name="textContent"><option value="title">Headline only</option><option value="brief">Brief / summary</option></select></label><label>Image position<select name="imagePosition"><option value="full">Full screen image, text over it</option><option value="top">Image top, text below</option><option value="bottom">Image bottom, text above</option><option value="left">Image left, text right</option><option value="right">Image right, text left</option></select></label><label>Text size<select name="textSize"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option><option value="xlarge">Extra large</option></select></label><label>Theme<select name="background"><option value="dark">Dark</option><option value="light">Light</option></select></label><label>Optional title<input name="title" placeholder="e.g. Headlines"></label><label>Title position<select name="titlePosition"><option value="top">Top</option><option value="bottom">Bottom</option></select></label><label>Title font<select name="titleFont"><option value="system">System sans</option><option value="serif">Serif</option><option value="mono">Monospace</option></select></label><label>Show source name<select name="showSource"><option value="true">Yes</option><option value="false">No</option></select></label><label>Show date<select name="showDate"><option value="true">Yes</option><option value="false">No</option></select></label><label>Progress bar<select name="showProgress"><option value="true">Yes</option><option value="false">No</option></select></label><label>Progress bar color<input name="progressColor" type="color" value="#38bdf8"></label><label>Image loading<select name="proxyImages"><option value="true">Through Home Assistant (works on isolated VLANs)</option><option value="false">Directly from the internet (faster, needs internet on the device)</option></select></label><label>Story order<select name="shuffle"><option value="false">Feed order</option><option value="true">Shuffled</option></select></label><label>Swipe navigation<select name="swipeNavigation"><option value="true">Enabled (swipe left/right to change story)</option><option value="false">Disabled</option></select></label><label>Seconds per story<input name="storySeconds" type="number" min="3" max="120" value="15"></label><label>Refresh feeds every (minutes)<input name="refreshInterval" type="number" min="1" max="1440" value="60"></label><label>Max stories<input name="maxStories" type="number" min="1" max="50" value="10"></label><label>Shadow<select name="shadowStyle"><option value="vignette">Vignette (edges of the whole screen)</option><option value="edge">Text-side (behind title and text only)</option><option value="off">Off</option></select></label><label>Shadow reach (text-side)<select name="shadowReach"><option value="auto">Auto — to just past the text</option><option value="30">30% of screen</option><option value="50">50% of screen</option><option value="75">75% of screen</option><option value="100">Full screen</option></select></label><label>Shadow opacity (1-10)<input name="shadowOpacity" type="number" min="1" max="10" value="5"></label><div class="modal-buttons"><button type="submit">Save</button><button type="button" id="cancel" class="secondary">Cancel</button></div></form></div></div>
+<div id="editor-modal" class="modal-overlay" hidden><div class="modal-content"><h2 id="modal-title">New display</h2><form id="editor"><input id="edit-id" type="hidden"><label>Name<input name="name" required placeholder="Morning headlines"></label><div id="sources" style="grid-column:1/-1;display:grid;gap:12px"></div><button type="button" id="add-source" class="secondary wide">＋ Add another feed</button><h3 class="wide">Presentation</h3><label>Text shown<select name="textContent"><option value="title">Headline only</option><option value="brief">Brief / summary</option></select></label><label>Image position<select name="imagePosition"><option value="full">Full screen image, text over it</option><option value="top">Image top, text below</option><option value="bottom">Image bottom, text above</option><option value="left">Image left, text right</option><option value="right">Image right, text left</option></select></label><label>Text size<select name="textSize"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option><option value="xlarge">Extra large</option></select></label><label>Theme<select name="background"><option value="dark">Dark</option><option value="light">Light</option></select></label><label>Optional title<input name="title" placeholder="e.g. Headlines"></label><label>Title position<select name="titlePosition"><option value="top">Top</option><option value="bottom">Bottom</option></select></label><label>Title font<select name="titleFont"><option value="system">System sans</option><option value="serif">Serif</option><option value="mono">Monospace</option></select></label><label>Show source name<select name="showSource"><option value="true">Yes</option><option value="false">No</option></select></label><label>Show date<select name="showDate"><option value="true">Yes</option><option value="false">No</option></select></label><label>Progress bar<select name="showProgress"><option value="true">Yes</option><option value="false">No</option></select></label><label>Progress bar color<input name="progressColor" type="color" value="#38bdf8"></label><label>Image loading<select name="proxyImages"><option value="true">Through Home Assistant (works on isolated VLANs)</option><option value="false">Directly from the internet (faster, needs internet on the device)</option></select></label><label>Stories without image<select name="requireImage"><option value="false">Show with fallback image</option><option value="true">Hide entirely</option></select></label><label>Minimum image resolution<select name="minImageRes"><option value="any">Any</option><option value="medium">Medium (50% of screen)</option><option value="high">High (85% of screen)</option></select></label><label>Story order<select name="shuffle"><option value="false">Feed order</option><option value="true">Shuffled</option></select></label><label>Swipe navigation<select name="swipeNavigation"><option value="true">Enabled (swipe left/right to change story)</option><option value="false">Disabled</option></select></label><label>Seconds per story<input name="storySeconds" type="number" min="3" max="120" value="15"></label><label>Refresh feeds every (minutes)<input name="refreshInterval" type="number" min="1" max="1440" value="60"></label><label>Max stories<input name="maxStories" type="number" min="1" max="50" value="10"></label><label>Shadow<select name="shadowStyle"><option value="vignette">Vignette (edges of the whole screen)</option><option value="edge">Text-side (behind title and text only)</option><option value="off">Off</option></select></label><label>Shadow reach (text-side)<select name="shadowReach"><option value="auto">Auto — to just past the text</option><option value="30">30% of screen</option><option value="50">50% of screen</option><option value="75">75% of screen</option><option value="100">Full screen</option></select></label><label>Shadow opacity (1-10)<input name="shadowOpacity" type="number" min="1" max="10" value="5"></label><div class="modal-buttons"><button type="submit">Save</button><button type="button" id="cancel" class="secondary">Cancel</button></div></form></div></div>
 <div id="preview-overlay" hidden><div id="preview-wrap"><div id="preview-bar"><strong id="preview-title">Preview</strong><button type="button" id="preview-close" class="secondary">✕ Close</button></div><iframe id="preview-frame" title="Display preview"></iframe></div></div>
-<script>const f=document.querySelector('#editor'),list=document.querySelector('#list'),cancel=document.querySelector('#cancel'),modal=document.querySelector('#editor-modal'),modalTitle=document.querySelector('#modal-title'),sources=document.querySelector('#sources');let items=[];
+<script>const f=document.querySelector('#editor'),list=document.querySelector('#list'),cancel=document.querySelector('#cancel'),modal=document.querySelector('#editor-modal'),modalTitle=document.querySelector('#modal-title'),sources=document.querySelector('#sources');let items=[];let globalFeeds=[];
 const base=location.pathname.replace(/\/$/,'');
 // Carry the access token into API calls and display links for direct
 // (non-ingress) access; through ingress the token is ignored by the server.
@@ -262,6 +310,7 @@ function resetForm(){f.reset();field('edit-id','');sources.innerHTML='';modalTit
 function openModal(dashboard,variant){resetForm();
  if(dashboard){for(const[k,v]of Object.entries(dashboard))field(k,v);field('edit-id',dashboard.id);(dashboard.sources||[]).forEach(s=>addSource(s));modalTitle.textContent=`Edit: ${dashboard.name}`}
  else{addSource();f.dataset.variant=variant||'';modalTitle.textContent=variant==='compact'?'New Card':'New Full Screen Display'}
+ renderFeedPicker((dashboard?.sources||[]).map(s=>s.url));
  modal.hidden=false}
 function closeModal(){modal.hidden=true;resetForm()}
 function showToast(message){const toast=document.createElement('div');toast.className='toast';toast.innerHTML=`<span>✓</span>${message}`;document.body.append(toast);setTimeout(()=>toast.remove(),1300)}
@@ -292,13 +341,36 @@ function duplicateRow(d){
 }
 function rowEditDelete(d,row){const btn=()=>{};return async function handler(){const del=row.querySelector('.danger');if(del.dataset.armed){del.disabled=true;try{await request(`/api/dashboards/${d.id}`,{method:'DELETE'});showToast('Deleted')}catch(e){showToast(e.message);del.disabled=false;del.dataset.armed='';del.textContent='Delete';return}load()}else{del.dataset.armed='1';del.textContent='Really delete?';setTimeout(()=>{if(del.isConnected&&del.dataset.armed){del.dataset.armed='';del.textContent='Delete'}},3000)}}}
 async function load(){items=await request('/api/dashboards');render()}
+
+// ---- Global RSS feeds ----
+const feedList=document.querySelector('#feed-list'),feedForm=document.querySelector('#feed-form'),feedEditId=document.querySelector('#feed-edit-id'),feedSaveBtn=document.querySelector('#feed-save'),feedCancelBtn=document.querySelector('#feed-cancel');
+function renderFeeds(){feedList.innerHTML=globalFeeds.length?'':'<p style="color:#94a3b8;font-size:.9rem">No global feeds yet — add one below.</p>';for(const g of globalFeeds){const row=document.createElement('div');row.className='row';row.innerHTML=`<div class="dash-top"><strong>${g.name}</strong><small>${g.url}</small></div><div class="dash-actions"><button class="secondary" data-edit-feed="${g.id}">Edit</button><button class="danger" data-del-feed="${g.id}">Delete</button></div>`;row.querySelector('[data-edit-feed]').onclick=()=>{feedEditId.value=g.id;document.querySelector('#feed-name').value=g.name;document.querySelector('#feed-url').value=g.url;document.querySelector('#feed-image').value=g.fallbackImage||'';feedSaveBtn.textContent='Save feed';feedCancelBtn.hidden=false};const del=row.querySelector('[data-del-feed]');del.onclick=async()=>{if(del.dataset.armed){del.disabled=true;try{await request(`/api/feeds/${g.id}`,{method:'DELETE'});showToast('Feed deleted');await loadFeeds()}catch(e){showToast(e.message);del.disabled=false;del.dataset.armed='';del.textContent='Delete'}}else{del.dataset.armed='1';del.textContent='Really delete?';setTimeout(()=>{if(del.isConnected&&del.dataset.armed){del.dataset.armed='';del.textContent='Delete'}},3000)}};feedList.append(row)}}
+function resetFeedForm(){feedEditId.value='';feedForm.reset();feedSaveBtn.textContent='Add feed';feedCancelBtn.hidden=true}
+feedForm.onsubmit=async e=>{e.preventDefault();const id=feedEditId.value;const body={name:document.querySelector('#feed-name').value,url:document.querySelector('#feed-url').value,fallbackImage:document.querySelector('#feed-image').value};await request(id?`/api/feeds/${id}`:'/api/feeds',{method:id?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});showToast(id?'Feed saved':'Feed added');resetFeedForm();await loadFeeds()};
+feedCancelBtn.onclick=resetFeedForm;
+async function loadFeeds(){globalFeeds=await request('/api/feeds');renderFeeds()}
+
+// ---- Dashboard editor: global feed picker ----
+// Checkbox list of global feeds; ticking one appends it to the dashboard's
+// own source list (as a normal editable source — unticking later simply
+// removes that row, the global feed itself is untouched).
+function renderFeedPicker(selectedUrls=[]){
+ let picker=document.querySelector('#feed-picker');if(!picker){picker=document.createElement('div');picker.id='feed-picker';picker.style.gridColumn='1/-1';sources.before(picker)}
+ if(!globalFeeds.length){picker.hidden=true;picker.innerHTML='';return}
+ picker.hidden=false;
+ picker.innerHTML='<h3 style="margin:0 0 6px">Global feeds</h3>'+globalFeeds.map(g=>{const on=selectedUrls.includes(g.url);return `<label style="display:flex;gap:8px;align-items:center;grid-auto-flow:column;justify-content:start;font-size:.95rem"><input type="checkbox" data-feed-id="${g.id}" data-feed-name="${g.name.replace(/"/g,'&quot;')}" data-feed-url="${g.url.replace(/"/g,'&quot;')}" data-feed-image="${(g.fallbackImage||'').replace(/"/g,'&quot;')}" ${on?'checked':''}> ${g.name}</label>`}).join('');
+ for(const box of picker.querySelectorAll('input[type=checkbox]'))box.onchange=()=>{
+  if(box.checked)addSource({name:box.dataset.feedName,url:box.dataset.feedUrl,fallbackImage:box.dataset.feedImage});
+  else{const row=[...sources.children].find(b=>b.querySelector('input[name^="sourceUrl"]')?.value===box.dataset.feedUrl);if(row)row.remove();renumber()}
+ }
+}
 const previewOverlay=document.querySelector('#preview-overlay');
 async function openPreview(d){document.querySelector('#preview-title').textContent=`Preview — ${d.name}`;previewOverlay.hidden=false;document.querySelector('#preview-frame').srcdoc='<p style="font:16px system-ui;color:#94a3b8;padding:20px">Loading…</p>';try{const r=await fetch(withAuth(base+`/api/preview/${d.id}`));const payload=await r.json();if(!r.ok)throw Error(payload.error||'Preview failed');document.querySelector('#preview-frame').srcdoc=payload.html}catch(e){document.querySelector('#preview-frame').srcdoc=`<p style="font:16px system-ui;color:#fca5a5;padding:20px">${e.message}</p>`}}
 document.querySelector('#preview-close').onclick=()=>previewOverlay.hidden=true;
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!previewOverlay.hidden)previewOverlay.hidden=true});
 f.onsubmit=async e=>{e.preventDefault();const id=f.elements['edit-id'].value;const data=Object.fromEntries(new FormData(f));if(!id&&f.dataset.variant)data.kind=f.dataset.variant;const path=id?`/api/dashboards/${id}`:'/api/dashboards';await request(path,{method:id?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});showToast(id?'Saved':'Created');closeModal();load()};
 cancel.onclick=closeModal;document.querySelector('#add-source').onclick=()=>addSource();document.querySelector('#new-full').onclick=()=>openModal(null,'full');document.querySelector('#new-compact').onclick=()=>openModal(null,'compact');modal.addEventListener('click',e=>{if(e.target===modal)closeModal()});
-load().catch(e=>list.textContent=e.message);</script></body></html>"""
+load().catch(e=>list.textContent=e.message);loadFeeds().catch(e=>feedList.textContent=e.message);</script></body></html>"""
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -386,6 +458,7 @@ class Handler(BaseHTTPRequestHandler):
             page = admin_page().replace("__ACCESS_TOKEN__", access_token())
             return self.send_html(page)
         if path == "/api/dashboards": return self.send_json(load_dashboards())
+        if path == "/api/feeds": return self.send_json(load_global_feeds())
         if path == "/api/image": return self.proxy_image()
         match = re.fullmatch(r"/api/preview/([a-z0-9-]+)", path)
         if match: return self.preview(match.group(1))
@@ -400,6 +473,13 @@ class Handler(BaseHTTPRequestHandler):
         if match: return self.preview(match.group(1))
         match = re.fullmatch(r"/api/dashboards/([a-z0-9-]+)/duplicate", path)
         if match: return self.duplicate(match.group(1))
+        if path == "/api/feeds":
+            try:
+                feeds = load_global_feeds(); item = clean_global_feed(self.payload())
+                if any(f["id"] == item["id"] for f in feeds): raise ValueError("A feed with this name already exists.")
+                feeds.append(item); save_global_feeds(feeds); self.send_json(item, HTTPStatus.CREATED)
+            except (ValueError, json.JSONDecodeError) as error: self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
         if path != "/api/dashboards": return self.send_json({"error": "Not found"}, 404)
         try:
             dashboards = load_dashboards(); item = clean_dashboard(self.payload())
@@ -443,7 +523,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_PUT(self) -> None:
         if not self.authorized(): return self.send_json({"error": "Unauthorized."}, 401)
-        match = re.fullmatch(r"/api/dashboards/([a-z0-9-]+)", urlparse(self.path).path.rstrip("/"))
+        path = urlparse(self.path).path.rstrip("/")
+        match = re.fullmatch(r"/api/feeds/([a-z0-9-]+)", path)
+        if match:
+            try:
+                feeds = load_global_feeds(); index = next((i for i, f in enumerate(feeds) if f["id"] == match.group(1)), None)
+                if index is None: raise KeyError("Feed not found.")
+                feeds[index] = clean_global_feed(self.payload(), feeds[index]); save_global_feeds(feeds); self.send_json(feeds[index])
+            except (KeyError, ValueError, json.JSONDecodeError) as error: self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        match = re.fullmatch(r"/api/dashboards/([a-z0-9-]+)", path)
         if not match: return self.send_json({"error": "Not found"}, 404)
         try:
             dashboards, index = self.find(match.group(1)); dashboards[index] = clean_dashboard(self.payload(), dashboards[index]); save_dashboards(dashboards); self.send_json(dashboards[index])
@@ -451,7 +540,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_DELETE(self) -> None:
         if not self.authorized(): return self.send_json({"error": "Unauthorized."}, 401)
-        match = re.fullmatch(r"/api/dashboards/([a-z0-9-]+)", urlparse(self.path).path.rstrip("/"))
+        path = urlparse(self.path).path.rstrip("/")
+        match = re.fullmatch(r"/api/feeds/([a-z0-9-]+)", path)
+        if match:
+            try:
+                feeds = load_global_feeds(); index = next((i for i, f in enumerate(feeds) if f["id"] == match.group(1)), None)
+                if index is None: raise KeyError("Feed not found.")
+                feeds.pop(index); save_global_feeds(feeds); self.send_json({"ok": True})
+            except KeyError as error: self.send_json({"error": str(error)}, HTTPStatus.NOT_FOUND)
+            return
+        match = re.fullmatch(r"/api/dashboards/([a-z0-9-]+)", path)
         if not match: return self.send_json({"error": "Not found"}, 404)
         try:
             dashboards, index = self.find(match.group(1)); dashboards.pop(index); save_dashboards(dashboards); self.send_json({"ok": True})

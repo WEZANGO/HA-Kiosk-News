@@ -53,6 +53,9 @@ body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,sa
     <option value="100">Full screen</option>
   </select></label>
 
+  <label>Stories without image<select id="requireImage"><option value="false">Show with fallback</option><option value="true">Hide entirely</option></select></label>
+  <label>Min image resolution<select id="minImageRes"><option value="any">Any</option><option value="medium">Medium (50% of screen)</option><option value="high">High (85% of screen)</option></select></label>
+
   <h2>Layout</h2>
   <label>Image position<select id="imagePosition">
     <option value="full">Full screen image, text over it</option>
@@ -128,7 +131,7 @@ body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,sa
 </div>
 
 <script>
-const FIELDS = ['shadowStyle','shadowOpacity','shadowReach','imagePosition','textContent','textSize','compact','title','titlePosition','titleSize','titleFont','showSource','showDate','background','showProgress','progressColor','storySeconds','shuffle','swipeNavigation'];
+const FIELDS = ['shadowStyle','shadowOpacity','shadowReach','requireImage','minImageRes','imagePosition','textContent','textSize','compact','title','titlePosition','titleSize','titleFont','showSource','showDate','background','showProgress','progressColor','storySeconds','shuffle','swipeNavigation'];
 const $ = id => document.getElementById(id);
 let auto = true, rebuildTimer = null;
 
