@@ -1,5 +1,5 @@
 name: Kiosk News Displays
-version: 0.1.10
+version: 0.1.11
 slug: kiosk_news_displays
 description: Create RSS news displays for Home Assistant dashboards and kiosks — large image with headline or brief.
 url: https://github.com/example/kiosk-news-displays
